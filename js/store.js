@@ -59,10 +59,24 @@
     return s;
   }
 
+  // Progress survives code updates: the storage key never changes, and merge()
+  // migrates older saves forward. Two safeguards against losing it anyway:
+  // - unreadable data is copied aside instead of being overwritten;
+  // - the previous save is kept under KEY + '.prev'.
   function load() {
+    let raw = null;
     try {
-      return merge(JSON.parse(localStorage.getItem(KEY)));
+      raw = localStorage.getItem(KEY);
+      if (raw == null) raw = localStorage.getItem(KEY + '.prev');
+      return merge(raw ? JSON.parse(raw) : null);
     } catch (e) {
+      try {
+        if (raw) localStorage.setItem(KEY + '.unreadable-' + Date.now(), raw);
+        const prev = localStorage.getItem(KEY + '.prev');
+        if (prev) return merge(JSON.parse(prev));
+      } catch (e2) {
+        /* fall through to a fresh start */
+      }
       return defaults();
     }
   }
@@ -71,6 +85,8 @@
     state.savedAt = Date.now();
     if (state.lessons.length > 1000) state.lessons.splice(0, state.lessons.length - 1000);
     try {
+      const current = localStorage.getItem(KEY);
+      if (current) localStorage.setItem(KEY + '.prev', current);
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
       /* storage unavailable: the file copy (if connected) still saves */
