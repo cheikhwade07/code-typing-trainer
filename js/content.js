@@ -32,6 +32,10 @@
     'return [§, §]', 'if § not in §:', '§ //= 2', '§ *= -1', '§ != §[-1]', '(§ & 1) == 0',
     '§ |= §', '{**§}', '[*§]', '§ % 10', '§ / 2', 'x <= y < z', 'Optional[§]', 'List[int]',
     'Dict[str, int]', '-> int:', '-> bool:', '# TODO', 'assert § == ¤', 'raise ValueError()',
+    // contrast drills for common mix-ups (_ vs -, [ vs {, ( vs [, " vs ', : vs ;-free =)
+    '§_§ - 1', '§_§ -= 1', '[§_§ - ¤]', '{§: [§]}', '§[§] = {}', '{§: §[¤]}', 'len(§[¤])',
+    '§[§(¤)]', '(§[¤], §[¤])', '"§" + \'§\'', '§_§: int = ¤', '§[¤:¤] == §[¤:]', '§ == §_§',
+    '§.§_§(¤)', '§ <= §_§ < §', '{§, §} | {§}', '§ != -1', '§ * (§ + 1) // 2',
   ];
 
   // Generic Python idioms for Lines mode (not solutions to any practice problem).
@@ -116,16 +120,47 @@
     return out;
   }
 
-  // keybr-style: only unlocked symbols appear; the focus symbol appears often.
-  function adaptive(unlocked, focus, length) {
+  // keybr-style, with a guaranteed mix so no single key takes over a lesson:
+  // ~50% focus, ~30% secondary (other weak, review-due, stale, mix-up partner), ~20% any.
+  // plan = { focus, secondary: [], partner }
+  // Short, high-density drills for one key (learn phase): "i(", "(dp", "x(j", "((".
+  const SHORT_IDS = ['i', 'j', 'k', 'n', 'x', 'l', 'r', 'dp', 'res', 'num'];
+  function micro(ch) {
+    const id = () => pick(SHORT_IDS);
+    const forms = [
+      () => id() + ch, () => ch + id(), () => id() + ch + id(), () => ch + ch,
+      () => id() + ch + id() + ch, () => ch + id() + ch,
+    ];
+    return pick(forms)();
+  }
+
+  function adaptive(unlocked, plan, length) {
     const unl = new Set(unlocked);
-    const focusTpl = TEMPLATES.filter((t) => t.includes(focus));
+    if (plan.partner) unl.add(plan.partner);
+    const withChar = (c) => TEMPLATES.filter((t) => t.includes(c));
+    const focusTpl = plan.focus ? withChar(plan.focus) : [];
+    const shortFocus = focusTpl.filter((t) => t.length <= 12);
+    const contrastTpl = plan.partner ? focusTpl.filter((t) => t.includes(plan.partner)) : [];
+    const learn = plan.phase === 'learn' && plan.focus;
     const out = [];
     let size = 0;
     let guard = 0;
     while (size < length && guard++ < 2000) {
-      const useFocus = focusTpl.length && Math.random() < 0.65;
-      const s = fill(pick(useFocus ? focusTpl : TEMPLATES));
+      const r = Math.random();
+      let pool = TEMPLATES;
+      let s = null;
+      if (learn) {
+        // ~45% micro drills, ~40% short real tokens, ~8% mix-up contrast, ~7% anything
+        if (r < 0.45) s = micro(plan.focus);
+        else if (r < 0.85 && (shortFocus.length || focusTpl.length)) pool = shortFocus.length ? shortFocus : focusTpl;
+        else if (r < 0.93) pool = contrastTpl.length ? contrastTpl : focusTpl.length ? focusTpl : TEMPLATES;
+      } else if (contrastTpl.length && r < 0.12) pool = contrastTpl;
+      else if (focusTpl.length && r < 0.5) pool = focusTpl;
+      else if (plan.secondary.length && r < 0.8) {
+        const sec = withChar(pick(plan.secondary));
+        if (sec.length) pool = sec;
+      }
+      if (s === null) s = fill(pick(pool));
       const syms = symbolsIn(s);
       if (!syms.size) continue;
       let ok = true;

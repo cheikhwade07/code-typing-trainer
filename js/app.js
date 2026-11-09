@@ -1,6 +1,6 @@
 // Main controller: lessons, typing loop, rendering, settings, stats view.
 (function () {
-  const { LAYOUT, CONTENT, ENGINE, STORE, SOUND, CHART } = window.CTT;
+  const { LAYOUT, CONTENT, ENGINE, STORE, SOUND, CHART, FILES, REPORT } = window.CTT;
   const $ = (id) => document.getElementById(id);
 
   let state = STORE.load();
@@ -33,7 +33,9 @@
   function buildText() {
     const mode = state.mode;
     if (mode === 'adaptive') {
-      return CONTENT.adaptive(ENGINE.unlockedList(state), ENGINE.focusKey(state), state.settings.lessonLen);
+      const plan = ENGINE.plan(state);
+      buildText.focus = plan.focus;
+      return CONTENT.adaptive(ENGINE.unlockedList(state), plan, state.settings.lessonLen);
     }
     if (mode === 'lines') {
       return CONTENT.lines((ch) => ENGINE.weakness(state, ch), 3);
@@ -52,6 +54,7 @@
   }
 
   function newLesson() {
+    buildText.focus = null;
     const text = buildText();
     $('mycodePanel').hidden = !(state.mode === 'mycode' && (!text || $('mycodePanel').dataset.open === '1'));
     if (state.mode === 'mycode') updateMycodeInfo();
@@ -72,7 +75,7 @@
     }
     lesson = {
       text, mode: state.mode, pos: 0, auto, errorsAt: new Set(), start: null, lastT: null,
-      sameHand: 0, done: false, typed: 0,
+      sameHand: 0, shifted: 0, done: false, typed: 0, perKey: {}, prevCh: null, focus: buildText.focus,
     };
     skipAuto();
     renderText();
@@ -83,6 +86,77 @@
   function skipAuto() {
     while (lesson.pos < lesson.text.length && lesson.auto.has(lesson.pos)) lesson.pos++;
   }
+
+  // ---------- persistence ----------
+  let fileState = 'none';
+  function persist() {
+    STORE.save(state);
+    if (FILES.server()) {
+      FILES.serverSave(state, REPORT.build(state)).then((ok) => {
+        const next = ok ? 'auto' : 'autofail';
+        if (next !== fileState) { fileState = next; renderFileBtn(); }
+      });
+      return;
+    }
+    if (FILES.connected()) {
+      FILES.write('progress.json', JSON.stringify(state, null, 1)).then((ok) => {
+        if (!ok) { fileState = 'prompt'; renderFileBtn(); }
+      });
+      FILES.write('report.md', REPORT.build(state));
+    }
+  }
+
+  function renderFileBtn() {
+    const b = $('fileBtn');
+    const label = {
+      unsupported: 'Browser storage only',
+      none: 'Save to folder…',
+      prompt: 'Reconnect folder',
+      granted: '✓ ' + (FILES.folder() || '') + '/data',
+      auto: '✓ Auto-saving',
+      autofail: 'Save failed, retrying',
+    }[fileState];
+    b.textContent = label;
+    b.className = fileState === 'granted' || fileState === 'auto' ? 'ghost ok' : fileState === 'unsupported' ? 'ghost' : 'ghost warn';
+    b.disabled = fileState === 'unsupported' || fileState === 'auto' || fileState === 'autofail';
+    b.title = {
+      auto: 'Progress and report.md are saved to data/ automatically after every lesson.',
+      autofail: 'The local server did not answer. Start it again with start-trainer.bat; progress is kept in the browser meanwhile.',
+      unsupported: 'This browser cannot write files. Use Chrome or Edge, or Export in Settings.',
+      none: 'Pick the code-typing-trainer folder. Progress and report.md are saved in its data/ folder.',
+      prompt: 'Click to allow saving to ' + (FILES.folder() || 'the folder') + ' again.',
+      granted: 'Saving progress.json and report.md after every lesson.',
+    }[fileState];
+  }
+
+  // Use whichever copy (browser or file) was saved most recently.
+  async function syncFromFile() {
+    const fromFile = await FILES.readJson('progress.json');
+    if (fromFile && (fromFile.savedAt || 0) > (state.savedAt || 0)) {
+      state = STORE.merge(fromFile);
+      STORE.save(state);
+      boot();
+      toast('Loaded progress from ' + FILES.folder() + '/data');
+    } else {
+      persist();
+    }
+  }
+
+  $('fileBtn').addEventListener('click', async () => {
+    $('fileBtn').blur();
+    try {
+      if (fileState === 'prompt') {
+        if (!(await FILES.reconnect())) return;
+      } else {
+        await FILES.choose();
+      }
+      fileState = 'granted';
+      renderFileBtn();
+      await syncFromFile();
+    } catch (e) {
+      /* picker cancelled */
+    }
+  });
 
   // ---------- rendering ----------
   function renderText() {
@@ -122,7 +196,8 @@
       const d = document.createElement('div');
       const st = ENGINE.stats(state, ch);
       const locked = i >= state.unlocked;
-      d.className = 'sym' + (locked ? ' locked' : '') + (ch === focus && !locked ? ' focus' : '') + (st.learned ? ' learned' : '');
+      const cls = { mastered: ' learned', 'review due': ' due', stale: ' stale' }[st.status] || '';
+      d.className = 'sym' + (locked ? ' locked' : '') + (ch === focus && !locked ? ' focus' : '') + cls;
       d.textContent = ch;
       if (!locked) {
         const bar = document.createElement('div');
@@ -132,7 +207,7 @@
       }
       d.title = locked
         ? ch + ' (locked)'
-        : ch + '  ·  ' + LAYOUT.describe(ch) + '\naccuracy ' + pct(st.acc) + ', speed ' + (st.wpm ? Math.round(st.wpm) + ' wpm' : '–') + ', ' + st.n + ' samples';
+        : ch + '  ·  ' + st.status + '  ·  ' + LAYOUT.describe(ch) + '\naccuracy ' + pct(st.acc) + ', speed ' + (st.wpm ? Math.round(st.wpm) + ' wpm' : '–') + ', ' + st.n + ' samples (21 days)';
       strip.appendChild(d);
     });
   }
@@ -141,8 +216,14 @@
     const el = $('focusLine');
     let html = '';
     if (state.mode === 'adaptive') {
-      const f = ENGINE.focusKey(state);
-      if (f) html = 'Focus <b>' + f + '</b> · ' + LAYOUT.describe(f);
+      const p = ENGINE.plan(state);
+      const esc = (c) => c.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      if (p.focus) {
+        html = (p.phase === 'learn' ? 'Learning <b>' : 'Focus <b>') + esc(p.focus) + '</b> · ' + LAYOUT.describe(p.focus);
+        if (p.partner) html += ' · mix-up: you often type <b>' + esc(p.partner) + '</b>';
+        const also = p.secondary.filter((c) => c !== p.partner).slice(0, 4);
+        if (p.phase !== 'learn' && also.length) html += ' · also <b>' + also.map(esc).join(' ') + '</b>';
+      }
     } else if (state.mode === 'mycode' && state.mycode.shown && lesson) {
       const s = state.mycode.shown;
       html = 'Lines ' + s.from + '–' + s.to + ' of ' + s.total + ' · <u style="cursor:pointer">edit code</u>';
@@ -163,6 +244,7 @@
         d.className = 'key';
         d.id = 'k-' + code;
         d.dataset.f = k.finger;
+        if (code === 'KeyF' || code === 'KeyJ') d.classList.add('home');
         d.style.width = 'calc(var(--u) * ' + k.w + ' - 4px)';
         if (k.label != null) {
           d.innerHTML = '<span class="name">' + k.label + '</span>';
@@ -177,16 +259,30 @@
       });
       kb.appendChild(r);
     });
+    const legend = document.createElement('div');
+    legend.className = 'legend';
+    [['p', 'pinky'], ['r', 'ring'], ['m', 'middle'], ['li', 'left index'], ['ri', 'right index'], ['th', 'thumb']].forEach(([g, name]) => {
+      const s = document.createElement('span');
+      s.dataset.g = g;
+      s.innerHTML = '<i></i>' + name;
+      legend.appendChild(s);
+    });
+    kb.appendChild(legend);
   }
+
+  const FINGER_GROUP = { lp: 'p', rp: 'p', lr: 'r', rr: 'r', lm: 'm', rm: 'm', li: 'li', ri: 'ri', th: 'th' };
 
   function renderKeymapHighlight() {
     document.querySelectorAll('.key.next, .key.nextshift').forEach((k) => k.classList.remove('next', 'nextshift'));
+    document.querySelectorAll('.legend span.on').forEach((s) => s.classList.remove('on'));
     if (!state.settings.highlightNext || !lesson || lesson.done) return;
     const ch = lesson.text[lesson.pos];
     const m = LAYOUT.charMap[ch];
     if (!m) return;
     const el = $('k-' + m.code);
     if (el) el.classList.add('next');
+    const g = document.querySelector('.legend span[data-g="' + FINGER_GROUP[LAYOUT.keys[m.code].finger] + '"]');
+    if (g) g.classList.add('on');
     const sh = LAYOUT.requiredShift(ch);
     if (sh && $('k-' + sh)) $('k-' + sh).classList.add('nextshift');
   }
@@ -235,18 +331,28 @@
     if (L.start === null) L.start = now;
     const exp = L.text[L.pos];
 
+    const pk = (L.perKey[exp] = L.perKey[exp] || { n: 0, ok: 0, tSum: 0, tN: 0 });
     if (ch === exp) {
-      if (e.shiftKey) {
-        const req = LAYOUT.requiredShift(ch);
-        if (req && shiftsDown.size && !shiftsDown.has(req)) {
-          L.sameHand++;
-          renderFocus('use ' + (req === 'ShiftLeft' ? 'LEFT' : 'RIGHT') + ' Shift for ' + showChar(ch));
-        }
+      const req = LAYOUT.requiredShift(ch);
+      if (req) L.shifted++;
+      if (e.shiftKey && req && shiftsDown.size && !shiftsDown.has(req)) {
+        L.sameHand++;
+        renderFocus('use ' + (req === 'ShiftLeft' ? 'LEFT' : 'RIGHT') + ' Shift for ' + showChar(ch));
       }
       if (!L.errorsAt.has(L.pos)) {
-        const t = L.lastT === null ? null : now - L.lastT;
-        ENGINE.record(state, exp, true, t != null && t > 3000 ? null : t);
+        let t = L.lastT === null ? null : now - L.lastT;
+        if (t != null && t > 3000) t = null;
+        ENGINE.record(state, exp, true, t);
+        pk.n++;
+        pk.ok++;
+        if (t != null) {
+          pk.tSum += t;
+          pk.tN++;
+          const pair = (L.prevCh || '') + exp;
+          if (L.prevCh && L.prevCh !== '\n' && (CONTENT.symbolsIn(pair).size)) ENGINE.recordPair(state, pair, t);
+        }
       }
+      L.prevCh = exp;
       spans[L.pos].classList.add('done');
       if (L.errorsAt.has(L.pos)) spans[L.pos].classList.add('err');
       L.lastT = now;
@@ -258,14 +364,19 @@
     } else {
       if (!L.errorsAt.has(L.pos)) {
         L.errorsAt.add(L.pos);
-        ENGINE.record(state, exp, false, null);
+        ENGINE.record(state, exp, false, null, ch);
+        pk.n++;
       }
+      L.prevCh = null; // timing after a mistake is not a clean transition
       SOUND.error();
+      const wk = $('k-' + e.code);
+      if (wk) {
+        wk.classList.add('wrong');
+        clearTimeout(wk._t);
+        wk._t = setTimeout(() => wk.classList.remove('wrong'), 220);
+      }
       if (state.settings.stopOnError) {
-        const s = spans[L.pos];
-        s.classList.remove('bad');
-        void s.offsetWidth; // restart the shake animation
-        s.classList.add('bad');
+        spans[L.pos].classList.add('bad');
         return;
       }
       spans[L.pos].classList.add('done', 'err');
@@ -305,16 +416,17 @@
       chars,
       errors: L.errorsAt.size,
       sameHand: L.sameHand,
+      shifted: L.shifted,
       dur: Math.round(dur),
     };
     state.lessons.push(rec);
     if (L.mode === 'mycode') state.mycode.pos = state.mycode.next || 0;
-    const unlocked = ENGINE.maybeUnlock(state);
-    STORE.save(state);
+    const events = ENGINE.afterLesson(state, L.perKey, L.mode, L.focus);
+    persist();
     SOUND.complete();
-    if (unlocked) {
-      SOUND.unlock();
-      toast('New symbol unlocked: ' + unlocked);
+    if (events.length) {
+      if (events.some((x) => /unlocked|Mastered|passed/.test(x))) SOUND.unlock();
+      toast(events.join(' · '));
     }
     renderMetrics(rec);
     renderStrip();
@@ -352,7 +464,7 @@
 
   function setMode(mode) {
     state.mode = mode;
-    STORE.save(state);
+    persist();
     document.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
     $('mycodePanel').dataset.open = '0';
     showView('practice');
@@ -366,7 +478,7 @@
     state.mycode.text = $('mycodeText').value;
     state.mycode.pos = 0;
     $('mycodePanel').dataset.open = '0';
-    STORE.save(state);
+    persist();
     $('mycodeSave').blur();
     newLesson();
   });
@@ -406,19 +518,45 @@
       '<div><b>' + best('adaptive') + '</b>best adaptive WPM</div>' +
       '<div><b>' + best('lines') + '</b>best lines WPM</div>' +
       '<div><b>' + state.unlocked + '/' + CONTENT.TRAIN.length + '</b>symbols unlocked</div>';
-    const rows = CONTENT.TRAIN.map((ch, i) => {
-      const st = ENGINE.stats(state, ch);
-      const status = i >= state.unlocked ? 'locked' : st.learned ? 'learned' : 'learning';
+    const now = Date.now();
+    const rows = CONTENT.TRAIN.map((ch) => {
+      const st = ENGINE.stats(state, ch, now);
+      const review = st.level ? 'L' + st.level + (st.due ? (st.due <= now ? ', due' : ', ' + Math.ceil((st.due - now) / 86400000) + 'd') : '') : '–';
       return (
-        '<tr><td class="k"></td><td>' + status + '</td><td>' + st.n + '</td><td>' + pct(st.acc) +
+        '<tr><td class="k"></td><td>' + st.status + '</td><td>' + st.n + '</td><td>' + pct(st.acc) +
         '</td><td>' + (st.wpm ? Math.round(st.wpm) + ' wpm' : '–') +
         '</td><td><div class="confbar"><i style="width:' + Math.round(st.conf * 100) + '%;background:' + confColor(st.conf) +
-        '"></i></div></td><td>' + LAYOUT.describe(ch) + '</td></tr>'
+        '"></i></div></td><td>' + review + '</td><td>' + LAYOUT.describe(ch) + '</td></tr>'
       );
     });
     $('keyRows').innerHTML = rows.join('');
     $('keyRows').querySelectorAll('td.k').forEach((td, i) => (td.textContent = CONTENT.TRAIN[i]));
+
+    const fill = (id, items, empty) => {
+      const el = $(id);
+      el.innerHTML = '';
+      if (!items.length) { el.innerHTML = '<li class="muted">' + empty + '</li>'; return; }
+      items.forEach((t) => { const li = document.createElement('li'); li.textContent = t; el.appendChild(li); });
+    };
+    fill('mixList', ENGINE.allConfusions(state, 8).map((c) => showChar(c.expected) + '  →  ' + showChar(c.typed) + '   ×' + c.count), 'No mix-ups recorded yet.');
+    fill('pairList', ENGINE.slowPairs(state, 8).map((p) => p.pair.replace(/ /g, '␣') + '   ' + p.median + ' ms   (' + p.n + ')'), 'Needs 5+ samples per pair.');
+    $('fileInfo').textContent = FILES.server()
+      ? 'Auto-saving after every lesson to data/progress.json and data/report.md.'
+      : FILES.connected()
+        ? 'Saved after every lesson to ' + FILES.folder() + '/data/progress.json and report.md.'
+        : 'Not saving to a file. Open the trainer with start-trainer.bat for automatic saving.';
   }
+
+  $('copyReport').addEventListener('click', async () => {
+    const md = REPORT.build(state);
+    try {
+      await navigator.clipboard.writeText(md);
+      toast('Report copied');
+    } catch (e) {
+      STORE.download('typing-report.md', md, 'text/markdown');
+    }
+  });
+  $('downloadReport').addEventListener('click', () => STORE.download('typing-report.md', REPORT.build(state), 'text/markdown'));
   window.addEventListener('resize', () => { if (view === 'stats') CHART.draw($('chart'), state.lessons); });
 
   // ---------- settings ----------
@@ -433,6 +571,7 @@
     $('sKeymap').checked = s.showKeymap;
     $('sNext').checked = s.highlightNext;
     $('sFingers').checked = s.fingerColors;
+    $('sFocus').value = s.focusStyle || 'single';
     dlg.showModal();
   });
   function readSettings() {
@@ -446,15 +585,16 @@
     s.showKeymap = $('sKeymap').checked;
     s.highlightNext = $('sNext').checked;
     s.fingerColors = $('sFingers').checked;
-    STORE.save(state);
+    s.focusStyle = $('sFocus').value === 'mixed' ? 'mixed' : 'single';
+    persist();
     applySettings();
     renderStrip();
   }
-  dlg.querySelectorAll('input').forEach((i) => i.addEventListener('change', readSettings));
+  dlg.querySelectorAll('input, select').forEach((i) => i.addEventListener('change', readSettings));
   dlg.addEventListener('close', () => { readSettings(); renderFocus(); });
   $('sUnlock').addEventListener('click', () => {
     const ch = ENGINE.forceUnlock(state);
-    STORE.save(state);
+    persist();
     renderStrip();
     toast(ch ? 'Unlocked: ' + ch : 'All symbols are unlocked');
   });
@@ -465,7 +605,7 @@
     if (!f) return;
     try {
       state = STORE.merge(JSON.parse(await f.text()));
-      STORE.save(state);
+      persist();
       boot();
       toast('Progress imported');
     } catch (err) {
@@ -478,7 +618,7 @@
     const settings = state.settings;
     state = STORE.defaults();
     state.settings = settings;
-    STORE.save(state);
+    persist();
     boot();
     toast('Progress reset');
   });
@@ -491,6 +631,29 @@
     renderStrip();
     renderMetrics();
     newLesson();
+    renderFileBtn();
   }
   boot();
+  (async () => {
+    // Preferred: auto-save through server.py (start-trainer.bat). No clicks needed.
+    const srv = await FILES.detectServer();
+    if (srv) {
+      fileState = 'auto';
+      const fromServer = srv.progress;
+      if (fromServer && (fromServer.savedAt || 0) > (state.savedAt || 0)) {
+        state = STORE.merge(fromServer);
+        STORE.save(state);
+        boot();
+      } else {
+        persist();
+      }
+      renderFileBtn();
+      return;
+    }
+    // Fallback (page opened as a file): optional folder access.
+    const s = await FILES.restore();
+    fileState = s;
+    renderFileBtn();
+    if (s === 'granted') await syncFromFile();
+  })();
 })();

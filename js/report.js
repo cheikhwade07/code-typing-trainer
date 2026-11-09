@@ -1,0 +1,95 @@
+// Markdown metrics report, written to data/report.md and copyable for analysis.
+(function () {
+  const CTT = (window.CTT = window.CTT || {});
+  const { ENGINE, CONTENT, LAYOUT } = CTT;
+  const DAY = 86400000;
+
+  const pct = (x) => (x == null || !isFinite(x) ? '–' : (x * 100).toFixed(1) + '%');
+  const num = (x, d) => (x == null || !isFinite(x) ? '–' : x.toFixed(d == null ? 0 : d));
+  const fmtDate = (ts) => {
+    const d = new Date(ts);
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  };
+  const show = (ch) => (ch === ' ' ? 'space' : ch === '\n' ? 'enter' : ch === '|' ? '\\|' : ch === '`' ? "'`'" : ch);
+
+  function avg(list, key) {
+    return list.length ? list.reduce((a, x) => a + x[key], 0) / list.length : null;
+  }
+
+  function build(state) {
+    const now = Date.now();
+    const L = state.lessons;
+    const in7 = L.filter((x) => now - x.ts < 7 * DAY);
+    const prev7 = L.filter((x) => now - x.ts >= 7 * DAY && now - x.ts < 14 * DAY);
+    const today = new Date().toDateString();
+    const mins = (list) => list.reduce((a, x) => a + (x.dur || 0), 0) / 60000;
+    const C = ENGINE.CONST;
+    const out = [];
+
+    out.push('# Code Typing Trainer report', '');
+    out.push('Generated: ' + fmtDate(now));
+    out.push('Data window: key samples older than ' + C.MAX_AGE_D + ' days are dropped; weight halves every ' + C.HALF_LIFE_D + ' days.');
+    out.push('Settings: target ' + state.settings.targetWpm + ' WPM per key, accuracy target ' + C.ACC_TARGET * 100 + '%, stop on error ' + (state.settings.stopOnError ? 'on' : 'off') + '.');
+    out.push('');
+
+    out.push('## Summary', '');
+    out.push('- Lessons: ' + L.length + ' total, ' + in7.length + ' in the last 7 days');
+    out.push('- Practice time: ' + num(mins(L.filter((x) => new Date(x.ts).toDateString() === today)), 1) + ' min today, ' + num(mins(in7), 1) + ' min last 7 days, ' + num(mins(L), 1) + ' min total');
+    out.push('- Symbols unlocked: ' + state.unlocked + '/' + CONTENT.TRAIN.length);
+    const sh = in7.reduce((a, x) => a + (x.sameHand || 0), 0);
+    const shifted = in7.reduce((a, x) => a + (x.shifted || 0), 0);
+    out.push('- Same-hand Shift (7 days): ' + sh + (shifted ? ' of ' + shifted + ' shifted characters (' + pct(sh / shifted) + ')' : ''));
+    out.push('');
+
+    out.push('## Trend by mode', '');
+    out.push('| Mode | Lessons 7d | WPM 7d | WPM prev 7d | Accuracy 7d | Accuracy prev 7d | Best WPM |');
+    out.push('|---|---|---|---|---|---|---|');
+    for (const m of ['adaptive', 'lines', 'mycode']) {
+      const a = in7.filter((x) => x.mode === m);
+      const b = prev7.filter((x) => x.mode === m);
+      const all = L.filter((x) => x.mode === m);
+      if (!all.length) continue;
+      out.push('| ' + m + ' | ' + a.length + ' | ' + num(avg(a, 'wpm'), 1) + ' | ' + num(avg(b, 'wpm'), 1) + ' | ' + pct(avg(a, 'acc')) + ' | ' + pct(avg(b, 'acc')) + ' | ' + num(Math.max(...all.map((x) => x.wpm)), 1) + ' |');
+    }
+    out.push('');
+
+    out.push('## Symbols', '');
+    out.push('| Key | Status | Samples (21d) | Weighted | Accuracy | Speed (WPM) | Review level | Next review | Top mix-up | Finger |');
+    out.push('|---|---|---|---|---|---|---|---|---|---|');
+    for (const ch of CONTENT.TRAIN) {
+      const st = ENGINE.stats(state, ch, now);
+      if (st.status === 'locked' && !st.n) continue;
+      const mix = ENGINE.topConfusions(state, ch, 1)[0];
+      const due = st.due ? (st.due <= now ? 'due now' : 'in ' + Math.ceil((st.due - now) / DAY) + 'd') : '–';
+      out.push('| `' + show(ch) + '` | ' + st.status + ' | ' + st.n + ' | ' + num(st.eff, 1) + ' | ' + pct(st.acc) + ' | ' + num(st.wpm) + ' | ' + st.level + ' | ' + due + ' | ' + (mix ? '`' + show(mix.typed) + '` ×' + mix.count : '–') + ' | ' + LAYOUT.describe(ch) + ' |');
+    }
+    out.push('');
+
+    const conf = ENGINE.allConfusions(state, 12);
+    out.push('## Top mix-ups (expected → typed, last 21 days)', '');
+    if (conf.length) {
+      out.push('| Expected | Typed | Count |', '|---|---|---|');
+      conf.forEach((c) => out.push('| `' + show(c.expected) + '` | `' + show(c.typed) + '` | ' + c.count + ' |'));
+    } else out.push('None recorded yet.');
+    out.push('');
+
+    const pairs = ENGINE.slowPairs(state, 10);
+    out.push('## Slowest transitions (pairs with a symbol, median ms from previous key)', '');
+    if (pairs.length) {
+      out.push('| Pair | Median ms | Samples |', '|---|---|---|');
+      pairs.forEach((p) => out.push('| `' + p.pair.replace(/\|/g, '\\|').replace(/ /g, '␣') + '` | ' + p.median + ' | ' + p.n + ' |'));
+    } else out.push('Not enough data yet (needs 5+ samples per pair).');
+    out.push('');
+
+    out.push('## Recent lessons', '');
+    out.push('| When | Mode | WPM | Accuracy | Errors | Chars | Same-hand Shift |', '|---|---|---|---|---|---|---|');
+    L.slice(-15).reverse().forEach((x) =>
+      out.push('| ' + fmtDate(x.ts) + ' | ' + x.mode + ' | ' + num(x.wpm, 1) + ' | ' + pct(x.acc) + ' | ' + x.errors + ' | ' + x.chars + ' | ' + (x.sameHand || 0) + ' |')
+    );
+    out.push('');
+    return out.join('\n');
+  }
+
+  CTT.REPORT = { build };
+})();

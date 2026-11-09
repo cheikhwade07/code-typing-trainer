@@ -1,11 +1,14 @@
-// localStorage persistence with safe fallbacks, plus JSON export/import.
+// localStorage persistence (fast local copy), version migration, and JSON export.
+// The durable copy lives in data/progress.json via files.js.
 (function () {
   const CTT = (window.CTT = window.CTT || {});
   const KEY = 'ctt.v1';
+  const VERSION = 3;
 
   function defaults() {
     return {
-      v: 1,
+      v: VERSION,
+      savedAt: 0,
       settings: {
         targetWpm: 30,
         lessonLen: 70,
@@ -14,11 +17,16 @@
         volume: 0.6,
         showKeymap: true,
         highlightNext: true,
-        fingerColors: false,
+        fingerColors: true,
+        focusStyle: 'single', // 'single' (keybr-style learn phase) | 'mixed'
       },
       mode: 'adaptive',
       unlocked: 6,
-      keys: {},
+      keys: {}, // ch -> { hist: [{ok, t, ts}], level, due }
+      confusions: {}, // expected ch -> [{c: typed, ts}]
+      pairs: {}, // "ab" -> [{t, ts}]
+      cooldown: {}, // ch -> lessons left resting
+      focusRun: null, // { ch, lessons, startConf }
       lessons: [],
       mycode: { text: '', pos: 0 },
     };
@@ -27,14 +35,28 @@
   function merge(raw) {
     const d = defaults();
     if (!raw || typeof raw !== 'object') return d;
-    return {
+    const s = {
       ...d,
       ...raw,
       settings: { ...d.settings, ...(raw.settings || {}) },
       mycode: { ...d.mycode, ...(raw.mycode || {}) },
       keys: raw.keys || {},
+      confusions: raw.confusions || {},
+      pairs: raw.pairs || {},
+      cooldown: raw.cooldown || {},
       lessons: Array.isArray(raw.lessons) ? raw.lessons : [],
     };
+    // v1 -> v2: samples had no timestamp; treat them as recent.
+    const now = Date.now();
+    for (const k of Object.values(s.keys)) {
+      k.hist = (k.hist || []).map((x) => (x.ts ? x : { ...x, ts: now }));
+      if (k.level == null) k.level = 0;
+      if (k.due === undefined) k.due = null;
+    }
+    // v3: finger colors became the default.
+    if ((raw.v || 1) < 3) s.settings.fingerColors = true;
+    s.v = VERSION;
+    return s;
   }
 
   function load() {
@@ -46,22 +68,28 @@
   }
 
   function save(state) {
+    state.savedAt = Date.now();
     if (state.lessons.length > 1000) state.lessons.splice(0, state.lessons.length - 1000);
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
-      /* storage unavailable: progress lives in memory for this tab */
+      /* storage unavailable: the file copy (if connected) still saves */
     }
   }
 
-  function exportJson(state) {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  function download(name, text, type) {
+    const blob = new Blob([text], { type });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'code-typing-trainer-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  CTT.STORE = { load, save, defaults, merge, exportJson };
+  function exportJson(state) {
+    download('code-typing-trainer-backup-' + new Date().toISOString().slice(0, 10) + '.json',
+      JSON.stringify(state, null, 2), 'application/json');
+  }
+
+  CTT.STORE = { load, save, defaults, merge, exportJson, download };
 })();

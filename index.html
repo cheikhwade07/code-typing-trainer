@@ -15,6 +15,7 @@
       <button data-mode="mycode" title="Retype your own code">My code</button>
     </nav>
     <div class="actions">
+      <button id="fileBtn" class="ghost">Save to folder…</button>
       <button id="statsBtn" class="ghost">Stats</button>
       <button id="settingsBtn" class="ghost" aria-label="Settings">⚙</button>
     </div>
@@ -49,11 +50,22 @@
     <h2>Progress</h2>
     <canvas id="chart" class="chart"></canvas>
     <div id="summary" class="summary"></div>
-    <h2>Symbols</h2>
+    <div class="report-bar">
+      <span id="fileInfo" class="muted"></span>
+      <span class="row-inline">
+        <button id="copyReport">Copy report</button>
+        <button id="downloadReport" class="ghost">Download report</button>
+      </span>
+    </div>
+    <h2>Symbols <span class="muted small">last 21 days, recent attempts count more</span></h2>
     <table class="keytable">
-      <thead><tr><th>Key</th><th>Status</th><th>Samples</th><th>Accuracy</th><th>Speed</th><th>Confidence</th><th>Finger</th></tr></thead>
+      <thead><tr><th>Key</th><th>Status</th><th>Samples</th><th>Accuracy</th><th>Speed</th><th>Confidence</th><th>Review</th><th>Finger</th></tr></thead>
       <tbody id="keyRows"></tbody>
     </table>
+    <div class="twocol">
+      <div><h2>Top mix-ups <span class="muted small">expected → typed</span></h2><ul id="mixList" class="plain"></ul></div>
+      <div><h2>Slowest transitions <span class="muted small">median ms</span></h2><ul id="pairList" class="plain"></ul></div>
+    </div>
   </main>
 
   <div id="toast" class="toast" hidden></div>
@@ -61,6 +73,12 @@
   <dialog id="settings">
     <form method="dialog" class="settings">
       <h2>Settings</h2>
+      <label>Focus style
+        <select id="sFocus">
+          <option value="single">One key at a time (keybr-style)</option>
+          <option value="mixed">Balanced mix</option>
+        </select>
+      </label>
       <label>Target speed per key (WPM) <input type="number" id="sTarget" min="10" max="120" step="1"></label>
       <label>Adaptive lesson length (chars) <input type="number" id="sLen" min="30" max="200" step="5"></label>
       <label class="check"><input type="checkbox" id="sStop"> Stop on error (must fix a wrong key before moving on)</label>
@@ -86,6 +104,8 @@
   <script src="js/store.js"></script>
   <script src="js/sound.js"></script>
   <script src="js/chart.js"></script>
+  <script src="js/files.js"></script>
+  <script src="js/report.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
