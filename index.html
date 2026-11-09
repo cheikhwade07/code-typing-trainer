@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code Typing Trainer</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo">{ }</span> Code Typing Trainer</div>
+    <nav class="modes" aria-label="Mode">
+      <button data-mode="adaptive" title="Adaptive symbol drills, keybr-style">Adaptive</button>
+      <button data-mode="lines" title="Real Python lines weighted toward your weak keys">Lines</button>
+      <button data-mode="mycode" title="Retype your own code">My code</button>
+    </nav>
+    <div class="actions">
+      <button id="statsBtn" class="ghost">Stats</button>
+      <button id="settingsBtn" class="ghost" aria-label="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main id="practice">
+    <section id="keystrip" aria-label="Symbol progress"></section>
+
+    <section class="metrics">
+      <div class="metric"><span class="label">WPM</span><span id="mWpm" class="value">–</span><span id="mWpmD" class="delta"></span></div>
+      <div class="metric"><span class="label">Accuracy</span><span id="mAcc" class="value">–</span><span id="mAccD" class="delta"></span></div>
+      <div class="metric"><span class="label">Same-hand Shift</span><span id="mShift" class="value">–</span></div>
+      <div class="metric"><span class="label">Today</span><span id="mToday" class="value">0m</span></div>
+    </section>
+
+    <section id="mycodePanel" hidden>
+      <textarea id="mycodeText" spellcheck="false" placeholder="Paste Python you have already written (for example your own LeetCode solution), then press Save."></textarea>
+      <div class="row">
+        <span id="mycodeInfo" class="muted"></span>
+        <button id="mycodeSave">Save &amp; start</button>
+      </div>
+    </section>
+
+    <section id="focusLine" class="focusline"></section>
+    <section id="textbox" class="textbox" tabindex="0" aria-label="Typing area"></section>
+    <p class="help muted">Type to start · <kbd>Esc</kbd> new lesson · <kbd>Enter</kbd> for line breaks · indentation fills in automatically</p>
+
+    <section id="keymap" class="kb" aria-hidden="true"></section>
+  </main>
+
+  <main id="statsView" hidden>
+    <h2>Progress</h2>
+    <canvas id="chart" class="chart"></canvas>
+    <div id="summary" class="summary"></div>
+    <h2>Symbols</h2>
+    <table class="keytable">
+      <thead><tr><th>Key</th><th>Status</th><th>Samples</th><th>Accuracy</th><th>Speed</th><th>Confidence</th><th>Finger</th></tr></thead>
+      <tbody id="keyRows"></tbody>
+    </table>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <dialog id="settings">
+    <form method="dialog" class="settings">
+      <h2>Settings</h2>
+      <label>Target speed per key (WPM) <input type="number" id="sTarget" min="10" max="120" step="1"></label>
+      <label>Adaptive lesson length (chars) <input type="number" id="sLen" min="30" max="200" step="5"></label>
+      <label class="check"><input type="checkbox" id="sStop"> Stop on error (must fix a wrong key before moving on)</label>
+      <label class="check"><input type="checkbox" id="sSound"> Sounds</label>
+      <label>Volume <input type="range" id="sVol" min="0" max="1" step="0.05"></label>
+      <label class="check"><input type="checkbox" id="sKeymap"> Show keyboard</label>
+      <label class="check"><input type="checkbox" id="sNext"> Highlight next key</label>
+      <label class="check"><input type="checkbox" id="sFingers"> Finger colors</label>
+      <div class="row wrap">
+        <button type="button" id="sUnlock" class="ghost">Unlock next symbol</button>
+        <button type="button" id="sExport" class="ghost">Export progress</button>
+        <button type="button" id="sImport" class="ghost">Import progress</button>
+        <button type="button" id="sReset" class="danger">Reset progress</button>
+        <input type="file" id="sImportFile" accept="application/json" hidden>
+      </div>
+      <div class="row end"><button value="close">Done</button></div>
+    </form>
+  </dialog>
+
+  <script src="js/layout.js"></script>
+  <script src="js/content.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
