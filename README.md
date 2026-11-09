@@ -68,6 +68,22 @@ Fallback when the page is opened as a file: **Save to folder…** lets Chrome or
 Edge write the same files after you pick this folder (it may ask to reconnect
 after a restart).
 
+### Sync across devices (GitHub Gist)
+
+1. Create a classic token with only the **gist** scope (Settings → *Create a
+   token* opens the pre-filled GitHub page). Pick an expiration you are happy
+   with; "No expiration" means you never have to redo this.
+2. Paste it in Settings → **Sync across devices** → Connect, once per browser.
+
+The trainer then finds or creates one secret gist
+(`code-typing-trainer-progress.json` and `code-typing-trainer-report.md`),
+uploads a few seconds after each lesson, and loads the newer copy when the page
+opens or the tab regains focus. The header shows "☁ Synced". The token stays
+in that browser's storage only (never in exports or the gist). A secret gist is
+unlisted, not encrypted: anyone with its URL can read it, which is fine for
+typing stats. If the token expires or is revoked, the header shows
+"☁ Token expired"; disconnect and connect with a new one, no progress is lost.
+
 ## Features
 
 - Stop on error (default): you must type the right key before moving on.
@@ -96,6 +112,7 @@ js/sound.js     Web Audio sounds
 js/chart.js     canvas progress chart
 js/files.js     auto-save via server.py, or folder access fallback
 js/report.js    markdown metrics report
+js/sync.js      optional GitHub Gist sync across devices
 js/app.js       typing loop, rendering, settings, stats view
 ```
 

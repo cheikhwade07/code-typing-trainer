@@ -1,6 +1,6 @@
 // Main controller: lessons, typing loop, rendering, settings, stats view.
 (function () {
-  const { LAYOUT, CONTENT, ENGINE, STORE, SOUND, CHART, FILES, REPORT } = window.CTT;
+  const { LAYOUT, CONTENT, ENGINE, STORE, SOUND, CHART, FILES, REPORT, SYNC } = window.CTT;
   const $ = (id) => document.getElementById(id);
 
   let state = STORE.load();
@@ -91,6 +91,7 @@
   let fileState = 'none';
   function persist() {
     STORE.save(state);
+    if (SYNC.enabled()) SYNC.push(state, REPORT.build(state));
     if (FILES.server()) {
       FILES.serverSave(state, REPORT.build(state)).then((ok) => {
         const next = ok ? 'auto' : 'autofail';
@@ -106,8 +107,92 @@
     }
   }
 
+  // ---------- Gist sync ----------
+  const lessonCount = (s) => (s && Array.isArray(s.lessons) ? s.lessons.length : 0);
+  function adoptRemote(remote, msg) {
+    state = STORE.merge(remote);
+    STORE.save(state);
+    boot();
+    if (msg) toast(msg);
+  }
+  // Startup / tab refocus: newest copy wins.
+  async function pullGist() {
+    const remote = await SYNC.startup();
+    if (remote && (remote.savedAt || 0) > (state.savedAt || 0)) {
+      adoptRemote(remote, 'Loaded synced progress');
+    } else if (SYNC.enabled() && (!remote || (state.savedAt || 0) > (remote.savedAt || 0))) {
+      SYNC.push(state, REPORT.build(state), 0);
+    }
+  }
+  let lastPull = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !SYNC.enabled()) return;
+    if (Date.now() - lastPull < 30000) return;
+    lastPull = Date.now();
+    pullGist();
+  });
+
+  function renderSync() {
+    const on = SYNC.enabled();
+    $('syncConnectRow').hidden = on;
+    $('syncOnRow').hidden = !on;
+    $('sTokenLink').href = SYNC.TOKEN_URL;
+    if (on) $('sGistLink').href = 'https://gist.github.com/' + SYNC.gistId();
+    const st = SYNC.status();
+    const last = SYNC.lastSync();
+    $('syncInfo').textContent = !on
+      ? 'Keeps progress in a secret gist on your GitHub account, so any browser with the same token continues where you left off. The token is stored in this browser only.'
+      : st === 'auth'
+        ? 'GitHub refused the token (expired or revoked). Disconnect, then connect with a new token. Progress is still saved in this browser.'
+        : st === 'error'
+          ? 'Could not reach GitHub. Progress is saved in this browser and will upload after the next lesson.'
+          : 'Connected. Uploads a few seconds after each lesson and checks for newer progress when the page opens.' +
+            (last ? ' Last sync: ' + new Date(last).toLocaleString() + '.' : '');
+    renderFileBtn();
+  }
+  SYNC.onStatus(renderSync);
+
+  $('sConnect').addEventListener('click', async () => {
+    const token = $('sToken').value.trim();
+    if (!token) { $('sToken').focus(); return; }
+    $('sConnect').disabled = true;
+    try {
+      const { login, remote } = await SYNC.connect(token, state, REPORT.build(state));
+      $('sToken').value = '';
+      const nRemote = lessonCount(remote);
+      const nLocal = lessonCount(state);
+      const remoteNewer = remote && (remote.savedAt || 0) > (state.savedAt || 0);
+      let useRemote = false;
+      if (remote && nRemote > 0 && remote.savedAt !== state.savedAt) {
+        if (nLocal === 0 || remoteNewer) useRemote = true;
+        else useRemote = !confirm('This browser has ' + nLocal + ' lessons; the synced copy has ' + nRemote +
+          '. OK keeps this browser\'s progress and overwrites the synced copy. Cancel loads the synced copy instead.');
+      }
+      if (useRemote) adoptRemote(remote, 'Connected as ' + login + ', loaded synced progress');
+      else { SYNC.push(state, REPORT.build(state), 0); toast('Connected as ' + login); }
+    } catch (e) {
+      toast(e.auth ? 'GitHub refused that token (needs the gist scope)' : 'Could not reach GitHub');
+    } finally {
+      $('sConnect').disabled = false;
+      renderSync();
+    }
+  });
+  $('sSyncNow').addEventListener('click', () => { lastPull = Date.now(); pullGist(); });
+  $('sDisconnect').addEventListener('click', () => {
+    SYNC.disconnect();
+    toast('Sync off. The gist stays on GitHub; progress stays in this browser.');
+  });
+
   function renderFileBtn() {
     const b = $('fileBtn');
+    if (SYNC.enabled()) {
+      const st = SYNC.status();
+      b.textContent = { syncing: '☁ Syncing…', auth: '☁ Token expired', error: '☁ Offline, retrying' }[st] || '☁ Synced';
+      b.className = st === 'auth' || st === 'error' ? 'ghost warn' : 'ghost ok';
+      b.disabled = false;
+      b.title = 'Progress syncs to your GitHub gist. Click for sync settings.';
+      return;
+    }
     const label = {
       unsupported: 'Browser storage only',
       none: 'Save to folder…',
@@ -144,6 +229,7 @@
 
   $('fileBtn').addEventListener('click', async () => {
     $('fileBtn').blur();
+    if (SYNC.enabled()) { $('settingsBtn').click(); return; }
     try {
       if (fileState === 'prompt') {
         if (!(await FILES.reconnect())) return;
@@ -572,6 +658,7 @@
     $('sNext').checked = s.highlightNext;
     $('sFingers').checked = s.fingerColors;
     $('sFocus').value = s.focusStyle || 'single';
+    renderSync();
     dlg.showModal();
   });
   function readSettings() {
@@ -641,6 +728,8 @@
     /* not supported */
   }
   (async () => {
+    // Synced copy first, so a newer gist is not overwritten by the local save below.
+    if (SYNC.enabled()) await pullGist();
     // Preferred: auto-save through server.py (start-trainer.bat). No clicks needed.
     const srv = await FILES.detectServer();
     if (srv) {

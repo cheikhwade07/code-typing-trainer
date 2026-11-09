@@ -87,6 +87,20 @@
       <label class="check"><input type="checkbox" id="sKeymap"> Show keyboard</label>
       <label class="check"><input type="checkbox" id="sNext"> Highlight next key</label>
       <label class="check"><input type="checkbox" id="sFingers"> Finger colors</label>
+      <fieldset class="sync">
+        <legend>Sync across devices (GitHub Gist)</legend>
+        <p class="muted small" id="syncInfo"></p>
+        <div class="row wrap" id="syncConnectRow">
+          <input type="password" id="sToken" placeholder="GitHub token with gist scope" autocomplete="off" spellcheck="false">
+          <button type="button" id="sConnect">Connect</button>
+          <a id="sTokenLink" class="small" target="_blank" rel="noopener">Create a token</a>
+        </div>
+        <div class="row wrap" id="syncOnRow" hidden>
+          <button type="button" id="sSyncNow" class="ghost">Sync now</button>
+          <a id="sGistLink" class="small" target="_blank" rel="noopener">Open gist</a>
+          <button type="button" id="sDisconnect" class="ghost">Disconnect</button>
+        </div>
+      </fieldset>
       <div class="row wrap">
         <button type="button" id="sUnlock" class="ghost">Unlock next symbol</button>
         <button type="button" id="sExport" class="ghost">Export progress</button>
@@ -106,6 +120,7 @@
   <script src="js/chart.js"></script>
   <script src="js/files.js"></script>
   <script src="js/report.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

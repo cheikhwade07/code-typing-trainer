@@ -83,8 +83,7 @@ interviews until they stop happening.
   middle, which prevents unmatched brackets.
 - **Install as an app (PWA):** a manifest plus a service worker so the
   GitHub Pages link can be installed like a desktop app and works offline.
-- **Sync across devices:** progress lives in one browser today; a GitHub Gist
-  or small backend could sync it.
+- ~~**Sync across devices**~~: done with GitHub Gist sync (see README).
 - **Weekly comparison** in the report: this week vs last week per key.
 - **Number-row variant** in Settings (9 on the middle finger, 0 on ring) if
   `(` stays slow after a few weeks.
