@@ -7,12 +7,45 @@
   const TRAIN = ['(', ')', '[', ']', '_', ':', '=', '"', "'", ',', '.', '{', '}', '+', '-',
     '<', '>', '!', '#', '*', '/', '%', '&', '|', '@', '\\'];
 
-  const IDS = ['i', 'j', 'k', 'n', 'x', 'l', 'r', 'res', 'ans', 'nums', 'arr', 'dp', 'seen',
+  // Real names only: common interview identifiers, everyday English variable names,
+  // and a few single letters (they are common in real code too).
+  const IDS = ['i', 'j', 'n', 'x', 'res', 'ans', 'nums', 'arr', 'dp', 'seen',
     'node', 'root', 'grid', 'word', 'count', 'left', 'right', 'stack', 'queue', 'curr', 'prev',
     'total', 'key', 'val', 'mid', 'target', 'graph', 'head', 'path', 'memo', 'freq', 'row',
     'col', 'heap', 'char', 'num', 'max_len', 'min_heap', 'is_valid', 'word_count', 'next_node',
-    'left_sum', 'best', 'visited', 'items', 'start', 'end'];
+    'left_sum', 'best', 'visited', 'items', 'start', 'end',
+    'name', 'user', 'data', 'text', 'line', 'file', 'price', 'score', 'level', 'color', 'size',
+    'index', 'value', 'result', 'output', 'title', 'city', 'order', 'item', 'list_of_names',
+    'user_name', 'file_path', 'max_score', 'total_cost', 'start_time'];
+  // Callable names, used wherever a template calls something: §( becomes one of these.
+  const FUNCS = ['len', 'print', 'range', 'sum', 'min', 'max', 'sorted', 'abs', 'int', 'str',
+    'list', 'set', 'dict', 'enumerate', 'zip', 'any', 'all', 'helper', 'dfs', 'bfs', 'solve',
+    'search', 'merge', 'build', 'update', 'process', 'validate', 'load_data', 'get_user'];
   const NUMS = ['0', '1', '2', '10', '26', '-1'];
+
+  // Learn-phase drills per symbol: real words and keywords with a high density of that key.
+  const MICRO = {
+    '(': ['print(', 'len(', 'range(', 'sum(', 'max(', 'min(', 'sorted(', 'append(', 'int(', 'str(',
+      'list(', 'dict(', 'set(', 'zip(', 'enumerate(', 'helper(', 'dfs(', 'input(', 'open(', 'abs('],
+    ')': ['()', 'self)', 'nums)', 'node)', 'root)', 'x)', 'i)', 'n)', 'key)', 'word)', 'data)',
+      'text)', 'name)', 'value)', 'path)', 'line)'],
+    '[': ['nums[', 'grid[', 'dp[', 'memo[', 'arr[', 'stack[', 'words[', 'matrix[', 'seen[', 'data[',
+      'names[', 'row['],
+    ']': ['i]', 'j]', '0]', '1]', 'key]', 'mid]', 'n]', 'idx]', 'row]', 'col]', 'name]', 'word]'],
+    '_': ['__init__', '__name__', 'max_len', 'min_heap', 'user_name', 'is_valid', 'word_count',
+      'left_sum', 'next_node', 'file_path', 'start_time', '_helper', 'total_cost', 'max_score',
+      'first_name', 'is_empty', 'num_rows', 'snake_case'],
+    ':': ['else:', 'try:', 'finally:', 'def run():', 'class Node:', 'if done:', 'for x in data:',
+      'while queue:', 'lambda x:', 'nums[1:]', 'if not seen:', 'return x[:2]', 'except:',
+      'elif found:', 'with open(path):'],
+    '=': ['x = 0', 'count = 1', 'name = data', 'total == 0', 'i = j', 'best = res', 'seen = set()',
+      'a == b', 'x != y', 'left = 0', 'right = n'],
+    '"': ['"name"', '"data"', '"hello"', '"key"', '"value"', '"user"', '"text"', 'print("hi")'],
+    "'": ["'name'", "'data'", "'hello'", "'key'", "'a'", "'b'", "' '", "'user'"],
+    ',': ['a, b', 'i, j', 'x, y', 'left, right', 'key, value', 'name, age', 'row, col', '(1, 2)'],
+    '.': ['self.val', 'node.next', 'root.left', 'nums.sort()', 'data.items()', 'word.lower()',
+      'text.split()', 'stack.pop()', 'os.path', 'line.strip()'],
+  };
 
   const TEMPLATES = [
     '§(¤)', '§[¤]', '§[¤][¤]', '§[¤:¤]', '§[:¤]', '§[¤:]', '§[-1]', '§[0]', '(¤, ¤)', '[¤, ¤]',
@@ -106,8 +139,18 @@
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
+  const SNAKE = ['max_len', 'min_heap', 'is_valid', 'word_count', 'next_node', 'left_sum',
+    'user_name', 'file_path', 'start_time', 'total_cost', 'max_score', 'first_name', 'is_empty',
+    'num_rows', 'num_cols', 'end_index', 'char_count', 'prev_node', 'max_profit', 'row_sum',
+    'last_seen', 'best_score', 'page_size', 'item_price', 'new_list'];
+  const PRIVATE = ['_helper', '_cache', '_build', '_reset', '_size', '_data', '_check'];
+
   function fill(tpl) {
     return tpl
+      .replace(/§_§/g, () => pick(SNAKE))
+      .replace(/(^|[^\w])_§/g, (m, pre) => pre + pick(PRIVATE))
+      .replace(/def §\(/g, () => 'def ' + pick(FUNCS.slice(17)) + '(')
+      .replace(/(^|[^.\w])§\(/g, (m, pre) => pre + pick(FUNCS) + '(')
       .replace(/§/g, () => pick(IDS))
       .replace(/¤/g, () => (Math.random() < 0.35 ? pick(NUMS) : pick(IDS)))
       .replace(/¶/g, () => pick(NUMS.filter((n) => n[0] !== '-')));
@@ -123,15 +166,18 @@
   // keybr-style, with a guaranteed mix so no single key takes over a lesson:
   // ~50% focus, ~30% secondary (other weak, review-due, stale, mix-up partner), ~20% any.
   // plan = { focus, secondary: [], partner }
-  // Short, high-density drills for one key (learn phase): "i(", "(dp", "x(j", "((".
-  const SHORT_IDS = ['i', 'j', 'k', 'n', 'x', 'l', 'r', 'dp', 'res', 'num'];
-  function micro(ch) {
-    const id = () => pick(SHORT_IDS);
-    const forms = [
-      () => id() + ch, () => ch + id(), () => id() + ch + id(), () => ch + ch,
-      () => id() + ch + id() + ch, () => ch + id() + ch,
-    ];
-    return pick(forms)();
+  // Short, high-density drills for one key (learn phase), made of real words:
+  // "print(", "nums[", "max_len", "else:". Falls back to short real tokens.
+  function micro(ch, allowed) {
+    const ok = (s) => [...symbolsIn(s)].every((c) => allowed.has(c));
+    const list = (MICRO[ch] || []).filter(ok);
+    if (list.length) return pick(list);
+    const short = TEMPLATES.filter((t) => t.includes(ch) && t.length <= 10);
+    for (let k = 0; k < 20 && short.length; k++) {
+      const s = fill(pick(short));
+      if (ok(s)) return s;
+    }
+    return pick(IDS) + ch + pick(IDS);
   }
 
   function adaptive(unlocked, plan, length) {
@@ -151,7 +197,7 @@
       let s = null;
       if (learn) {
         // ~45% micro drills, ~40% short real tokens, ~8% mix-up contrast, ~7% anything
-        if (r < 0.45) s = micro(plan.focus);
+        if (r < 0.45) s = micro(plan.focus, unl);
         else if (r < 0.85 && (shortFocus.length || focusTpl.length)) pool = shortFocus.length ? shortFocus : focusTpl;
         else if (r < 0.93) pool = contrastTpl.length ? contrastTpl : focusTpl.length ? focusTpl : TEMPLATES;
       } else if (contrastTpl.length && r < 0.12) pool = contrastTpl;
