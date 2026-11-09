@@ -1,0 +1,27 @@
+{
+ "v": 3,
+ "savedAt": 1794264509003,
+ "settings": {
+  "targetWpm": 30,
+  "lessonLen": 70,
+  "stopOnError": true,
+  "sound": true,
+  "volume": 0.6,
+  "showKeymap": true,
+  "highlightNext": true,
+  "fingerColors": true,
+  "focusStyle": "single"
+ },
+ "mode": "adaptive",
+ "unlocked": 6,
+ "keys": {},
+ "confusions": {},
+ "pairs": {},
+ "cooldown": {},
+ "focusRun": null,
+ "lessons": [],
+ "mycode": {
+  "text": "",
+  "pos": 0
+ }
+}

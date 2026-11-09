@@ -117,13 +117,13 @@
       autofail: 'Save failed, retrying',
     }[fileState];
     b.textContent = label;
-    b.className = fileState === 'granted' || fileState === 'auto' ? 'ghost ok' : fileState === 'unsupported' ? 'ghost' : 'ghost warn';
+    b.className = fileState === 'granted' || fileState === 'auto' ? 'ghost ok' : fileState === 'prompt' || fileState === 'autofail' ? 'ghost warn' : 'ghost';
     b.disabled = fileState === 'unsupported' || fileState === 'auto' || fileState === 'autofail';
     b.title = {
       auto: 'Progress and report.md are saved to data/ automatically after every lesson.',
       autofail: 'The local server did not answer. Start it again with start-trainer.bat; progress is kept in the browser meanwhile.',
       unsupported: 'This browser cannot write files. Use Chrome or Edge, or Export in Settings.',
-      none: 'Pick the code-typing-trainer folder. Progress and report.md are saved in its data/ folder.',
+      none: 'Progress is already saved in this browser automatically. Optional: pick a folder to also keep data/progress.json and data/report.md on disk.',
       prompt: 'Click to allow saving to ' + (FILES.folder() || 'the folder') + ' again.',
       granted: 'Saving progress.json and report.md after every lesson.',
     }[fileState];
@@ -544,7 +544,7 @@
       ? 'Auto-saving after every lesson to data/progress.json and data/report.md.'
       : FILES.connected()
         ? 'Saved after every lesson to ' + FILES.folder() + '/data/progress.json and report.md.'
-        : 'Not saving to a file. Open the trainer with start-trainer.bat for automatic saving.';
+        : 'Progress is saved in this browser automatically. Use Copy report to share your stats, or Save to folder to also keep files on disk.';
   }
 
   $('copyReport').addEventListener('click', async () => {
@@ -634,6 +634,12 @@
     renderFileBtn();
   }
   boot();
+  // Ask the browser to keep this site's storage (not evicted under disk pressure).
+  try {
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  } catch (e) {
+    /* not supported */
+  }
   (async () => {
     // Preferred: auto-save through server.py (start-trainer.bat). No clicks needed.
     const srv = await FILES.detectServer();

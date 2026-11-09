@@ -4,7 +4,13 @@ An offline typing trainer for programming symbols, built around keybr's adaptive
 idea (track every key, drill the weakest, unlock new keys once the current set
 is solid) but aimed at Python code instead of letters.
 
-**Start it with `start-trainer.bat`** (double-click; make a desktop shortcut
+**Online:** https://cheikhwade07.github.io/code-typing-trainer/ (GitHub
+Pages). Progress saves in your browser automatically; use the same browser
+each time. Stats → **Copy report** gives a shareable metrics report.
+Optionally click **Save to folder…** once (Chrome or Edge) to also keep
+`data/progress.json` and `data/report.md` on disk.
+
+**Offline alternative: `start-trainer.bat`** (double-click; make a desktop shortcut
 to it). It starts a tiny local server in the background and opens the page at
 http://127.0.0.1:8765/. Progress saves automatically, no clicks. Double-clicking
 again while it runs just opens the page. Opening `index.html` directly also
