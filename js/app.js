@@ -29,9 +29,99 @@
     return ch;
   }
 
+  // ---------- warmup (not recorded) ----------
+  const WARM_FINGERS = ['lp', 'lr', 'lm', 'li', 'ri', 'rm', 'rr', 'rp'];
+  const WARM_HOME = { lp: 'a', lr: 's', lm: 'd', li: 'f', ri: 'j', rm: 'k', rr: 'l', rp: ';' };
+  // Home row first, then the closest reaches, the number row last, then a mix.
+  const WARM_STAGES = [['home row', 2], ['top row', 1], ['bottom row', 3], ['number row', 0], ['all keys mixed', -1]];
+  function warm() {
+    if (!state.warm || !WARM_HOME[state.warm.finger]) state.warm = { finger: 'rp', stage: 0 };
+    return state.warm;
+  }
+  function warmChars(finger, rowIdx) {
+    const out = [];
+    LAYOUT.ROWS[rowIdx].forEach(([code]) => {
+      const k = LAYOUT.keys[code];
+      if (k.finger !== finger || !k.base) return;
+      out.push(k.base);
+      if (k.shifted && !/[A-Z]/.test(k.shifted)) out.push(k.shifted);
+    });
+    return out;
+  }
+  // Each round: a tour (every key once, in keyboard order, from home), then
+  // reach drills, then random tokens. Later rounds are more random.
+  function warmupText() {
+    const w = warm();
+    const H = WARM_HOME[w.finger];
+    const [, row] = WARM_STAGES[w.stage];
+    const pick = (a) => a[Math.floor(Math.random() * a.length)];
+    const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    const word = (pool, min, max) => { let s = ''; const n = min + Math.floor(Math.random() * (max - min + 1)); for (let i = 0; i < n; i++) s += pick(pool); return s; };
+    const allRows = [2, 1, 3, 0].map((r) => warmChars(w.finger, r));
+    const all = allRows.flat();
+    const toks = [];
+
+    if (row === -1) {
+      // Final round: fully random words of 2-4 keys, a few anchored on home.
+      for (let i = 0; i < 16; i++) toks.push(Math.random() < 0.25 ? H + word(all, 1, 2) : word(all, 2, 4));
+      return toks.join(' ');
+    }
+
+    const chars = warmChars(w.finger, row);
+    const reach = chars.filter((c) => c !== H);
+    // Tour first. The very first round tours every key of the finger so you
+    // can situate all of them; later rounds tour just their own row.
+    const tour = w.stage === 0 ? all.filter((c) => c !== H) : reach;
+    tour.forEach((c) => toks.push(H + c + H));
+
+    // Reach drills: fewer and shuffled as rounds go on.
+    const reps = [3, 2, 2, 1][w.stage] || 1;
+    const drills = [];
+    (reach.length ? reach : [H]).forEach((c) => {
+      for (let i = 0; i < reps; i++) drills.push(H + c, c + H);
+    });
+    toks.push(...(w.stage === 0 ? drills : shuffle(drills)));
+
+    // Random words from this row, mixed with earlier rows in later rounds.
+    const pool = w.stage === 0 ? chars : chars.concat(...allRows.slice(0, w.stage));
+    const n = [5, 7, 9, 10][w.stage] || 8;
+    for (let i = 0; i < n; i++) toks.push(word(i % 2 ? pool : chars, 2, 2 + Math.min(w.stage, 2)));
+    return toks.join(' ');
+  }
+  function renderWarmupPanel() {
+    const p = $('warmupPanel');
+    p.hidden = state.mode !== 'warmup';
+    if (p.hidden) return;
+    const w = warm();
+    p.innerHTML = '';
+    WARM_FINGERS.forEach((f, i) => {
+      if (i === 4) { const g = document.createElement('span'); g.className = 'gap'; p.appendChild(g); }
+      const b = document.createElement('button');
+      b.className = 'ghost' + (f === w.finger ? ' on' : '');
+      b.dataset.f = f;
+      b.innerHTML = '<i></i>' + LAYOUT.FINGER_NAMES[f];
+      b.addEventListener('click', () => {
+        b.blur();
+        state.warm = { finger: f, stage: 0 };
+        STORE.save(state);
+        renderWarmupPanel();
+        newLesson();
+      });
+      p.appendChild(b);
+    });
+  }
+  function renderWarmKeys() {
+    const kb = $('keymap');
+    const on = state.mode === 'warmup';
+    kb.classList.toggle('warm', on);
+    const f = on ? warm().finger : null;
+    kb.querySelectorAll('.key').forEach((k) => k.classList.toggle('wf', on && k.dataset.f === f));
+  }
+
   // ---------- lesson creation ----------
   function buildText() {
     const mode = state.mode;
+    if (mode === 'warmup') return warmupText();
     if (mode === 'adaptive') {
       const plan = ENGINE.plan(state);
       buildText.focus = plan.focus;
@@ -58,6 +148,8 @@
     const text = buildText();
     $('mycodePanel').hidden = !(state.mode === 'mycode' && (!text || $('mycodePanel').dataset.open === '1'));
     if (state.mode === 'mycode') updateMycodeInfo();
+    renderWarmupPanel();
+    renderWarmKeys();
     if (!text) {
       lesson = null;
       $('textbox').innerHTML = '<span class="muted">Paste some of your own code above to start.</span>';
@@ -310,6 +402,10 @@
         const also = p.secondary.filter((c) => c !== p.partner).slice(0, 4);
         if (p.phase !== 'learn' && also.length) html += ' · also <b>' + also.map(esc).join(' ') + '</b>';
       }
+    } else if (state.mode === 'warmup') {
+      const w = warm();
+      html = 'Warmup · <b>' + LAYOUT.FINGER_NAMES[w.finger] + '</b> · ' + WARM_STAGES[w.stage][0] +
+        ' (' + (w.stage + 1) + '/' + WARM_STAGES.length + ') · not counted in stats';
     } else if (state.mode === 'mycode' && state.mycode.shown && lesson) {
       const s = state.mycode.shown;
       html = 'Lines ' + s.from + '–' + s.to + ' of ' + s.total + ' · <u style="cursor:pointer">edit code</u>';
@@ -425,7 +521,7 @@
         L.sameHand++;
         renderFocus('use ' + (req === 'ShiftLeft' ? 'LEFT' : 'RIGHT') + ' Shift for ' + showChar(ch));
       }
-      if (!L.errorsAt.has(L.pos)) {
+      if (!L.errorsAt.has(L.pos) && L.mode !== 'warmup') {
         let t = L.lastT === null ? null : now - L.lastT;
         if (t != null && t > 3000) t = null;
         ENGINE.record(state, exp, true, t);
@@ -450,7 +546,7 @@
     } else {
       if (!L.errorsAt.has(L.pos)) {
         L.errorsAt.add(L.pos);
-        ENGINE.record(state, exp, false, null, ch);
+        if (L.mode !== 'warmup') ENGINE.record(state, exp, false, null, ch);
         pk.n++;
       }
       L.prevCh = null; // timing after a mistake is not a clean transition
@@ -494,6 +590,17 @@
     const now = performance.now();
     const dur = Math.max(1, now - L.start);
     const chars = L.text.length - L.auto.size;
+    if (L.mode === 'warmup') {
+      // Nothing recorded: just move on to the next row of this finger.
+      const w = warm();
+      const acc = Math.round(Math.max(0, 1 - L.errorsAt.size / chars) * 100);
+      w.stage = (w.stage + 1) % WARM_STAGES.length;
+      STORE.save(state);
+      SOUND.complete();
+      toast((w.stage === 0 ? 'Warmup round done' : 'Next: ' + WARM_STAGES[w.stage][0]) + ' · ' + acc + '% accurate');
+      newLesson();
+      return;
+    }
     const rec = {
       ts: Date.now(),
       mode: L.mode,

@@ -358,3 +358,16 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 .kb.fingers .key.nextshift { border-color: var(--fc); border-style: dashed; box-shadow: none; }
 
 [hidden] { display: none !important; }
+
+/* Warmup mode */
+.warmup { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+.warmup button { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 5px 10px; }
+.warmup button i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; background: var(--fc); }
+.warmup button.on { outline: 2px solid var(--fc); color: var(--text); }
+.warmup .gap { width: 18px; }
+.warmup [data-f='lp'], .warmup [data-f='rp'] { --fc: var(--f-dot-p); }
+.warmup [data-f='lr'], .warmup [data-f='rr'] { --fc: var(--f-dot-r); }
+.warmup [data-f='lm'], .warmup [data-f='rm'] { --fc: var(--f-dot-m); }
+.warmup [data-f='li'] { --fc: var(--f-dot-li); }
+.warmup [data-f='ri'] { --fc: var(--f-dot-ri); }
+.kb.warm .key:not(.wf):not(.next):not(.nextshift) { opacity: 0.3; }
