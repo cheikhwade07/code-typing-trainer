@@ -371,3 +371,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 .warmup [data-f='li'] { --fc: var(--f-dot-li); }
 .warmup [data-f='ri'] { --fc: var(--f-dot-ri); }
 .kb.warm .key:not(.wf):not(.next):not(.nextshift) { opacity: 0.3; }
+.warmup .break { flex-basis: 100%; height: 0; }
+.warmup button.round { font-size: 12px; padding: 4px 10px; }
+.warmup button.round.on { outline: 2px solid var(--accent); color: var(--text); }

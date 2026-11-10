@@ -33,7 +33,8 @@ works, without automatic saving.
   Enter at each line break.
 - **My code**: paste code you have already written and retype it in chunks of
   4 lines. Indentation fills in automatically.
-- **Warmup**: pick a finger, then reach from its home key to each of its keys
+- **Warmup**: pick a finger and a round (tour, home row, top row, bottom row,
+  number row, mix). Rounds reach from the home key to each of its keys
   and back (`;p ;p p;`), row by row: home row, top row, bottom row, number
   row, then a mix. The keyboard dims every other finger's keys. Nothing is
   recorded: no stats, no mix-ups, no progress changes.

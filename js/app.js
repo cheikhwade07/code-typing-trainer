@@ -32,10 +32,14 @@
   // ---------- warmup (not recorded) ----------
   const WARM_FINGERS = ['lp', 'lr', 'lm', 'li', 'ri', 'rm', 'rr', 'rp'];
   const WARM_HOME = { lp: 'a', lr: 's', lm: 'd', li: 'f', ri: 'j', rm: 'k', rr: 'l', rp: ';' };
-  // Home row first, then the closest reaches, the number row last, then a mix.
-  const WARM_STAGES = [['home row', 2], ['top row', 1], ['bottom row', 3], ['number row', 0], ['all keys mixed', -1]];
+  // Rounds, pickable from the menu. The default flow starts on the home row,
+  // then the closest reaches, the number row last, then a mix, and loops.
+  // "Tour" (every key once from home) is only played when picked.
+  const WARM_STAGES = [['tour', 'tour'], ['home row', 2], ['top row', 1], ['bottom row', 3], ['number row', 0], ['mix', -1]];
+  const WARM_START = 1;
   function warm() {
-    if (!state.warm || !WARM_HOME[state.warm.finger]) state.warm = { finger: 'rp', stage: 0 };
+    if (!state.warm || !WARM_HOME[state.warm.finger]) state.warm = { finger: 'rp', stage: WARM_START };
+    if (!(state.warm.stage >= 0 && state.warm.stage < WARM_STAGES.length)) state.warm.stage = WARM_START;
     return state.warm;
   }
   function warmChars(finger, rowIdx) {
@@ -48,44 +52,30 @@
     });
     return out;
   }
-  // Each round: a tour (every key once, in keyboard order, from home), then
-  // reach drills, then random tokens. Later rounds are more random.
   function warmupText() {
     const w = warm();
     const H = WARM_HOME[w.finger];
     const [, row] = WARM_STAGES[w.stage];
     const pick = (a) => a[Math.floor(Math.random() * a.length)];
-    const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-    const word = (pool, min, max) => { let s = ''; const n = min + Math.floor(Math.random() * (max - min + 1)); for (let i = 0; i < n; i++) s += pick(pool); return s; };
-    const allRows = [2, 1, 3, 0].map((r) => warmChars(w.finger, r));
-    const all = allRows.flat();
+    const all = [2, 1, 3, 0].flatMap((r) => warmChars(w.finger, r));
     const toks = [];
-
-    if (row === -1) {
-      // Final round: fully random words of 2-4 keys, a few anchored on home.
-      for (let i = 0; i < 16; i++) toks.push(Math.random() < 0.25 ? H + word(all, 1, 2) : word(all, 2, 4));
+    if (row === 'tour') {
+      // Every key of the finger once, in keyboard order, leaving from home: twice.
+      const keys = all.filter((c) => c !== H);
+      for (let i = 0; i < 2; i++) keys.forEach((c) => toks.push(H + c + H));
       return toks.join(' ');
     }
-
+    if (row === -1) {
+      for (let i = 0; i < 14; i++) toks.push(pick(all) + pick(all));
+      return toks.join(' ');
+    }
     const chars = warmChars(w.finger, row);
-    const reach = chars.filter((c) => c !== H);
-    // Tour first. The very first round tours every key of the finger so you
-    // can situate all of them; later rounds tour just their own row.
-    const tour = w.stage === 0 ? all.filter((c) => c !== H) : reach;
-    tour.forEach((c) => toks.push(H + c + H));
-
-    // Reach drills: fewer and shuffled as rounds go on.
-    const reps = [3, 2, 2, 1][w.stage] || 1;
-    const drills = [];
-    (reach.length ? reach : [H]).forEach((c) => {
-      for (let i = 0; i < reps; i++) drills.push(H + c, c + H);
+    // Reach out from the home key and come back: ";p ;p ;p" then "p; p;".
+    chars.forEach((c) => {
+      if (c === H) { toks.push(H + H, H + H); return; }
+      toks.push(H + c, H + c, H + c, c + H, c + H);
     });
-    toks.push(...(w.stage === 0 ? drills : shuffle(drills)));
-
-    // Random words from this row, mixed with earlier rows in later rounds.
-    const pool = w.stage === 0 ? chars : chars.concat(...allRows.slice(0, w.stage));
-    const n = [5, 7, 9, 10][w.stage] || 8;
-    for (let i = 0; i < n; i++) toks.push(word(i % 2 ? pool : chars, 2, 2 + Math.min(w.stage, 2)));
+    for (let i = 0; i < 6; i++) toks.push(pick(chars) + pick(chars));
     return toks.join(' ');
   }
   function renderWarmupPanel() {
@@ -102,7 +92,23 @@
       b.innerHTML = '<i></i>' + LAYOUT.FINGER_NAMES[f];
       b.addEventListener('click', () => {
         b.blur();
-        state.warm = { finger: f, stage: 0 };
+        state.warm = { finger: f, stage: WARM_START };
+        STORE.save(state);
+        renderWarmupPanel();
+        newLesson();
+      });
+      p.appendChild(b);
+    });
+    const br = document.createElement('span');
+    br.className = 'break';
+    p.appendChild(br);
+    WARM_STAGES.forEach(([name], i) => {
+      const b = document.createElement('button');
+      b.className = 'ghost round' + (i === w.stage ? ' on' : '');
+      b.textContent = name;
+      b.addEventListener('click', () => {
+        b.blur();
+        w.stage = i;
         STORE.save(state);
         renderWarmupPanel();
         newLesson();
@@ -405,7 +411,7 @@
     } else if (state.mode === 'warmup') {
       const w = warm();
       html = 'Warmup · <b>' + LAYOUT.FINGER_NAMES[w.finger] + '</b> · ' + WARM_STAGES[w.stage][0] +
-        ' (' + (w.stage + 1) + '/' + WARM_STAGES.length + ') · not counted in stats';
+        ' · not counted in stats';
     } else if (state.mode === 'mycode' && state.mycode.shown && lesson) {
       const s = state.mycode.shown;
       html = 'Lines ' + s.from + '–' + s.to + ' of ' + s.total + ' · <u style="cursor:pointer">edit code</u>';
@@ -594,10 +600,12 @@
       // Nothing recorded: just move on to the next row of this finger.
       const w = warm();
       const acc = Math.round(Math.max(0, 1 - L.errorsAt.size / chars) * 100);
-      w.stage = (w.stage + 1) % WARM_STAGES.length;
+      const wasLast = w.stage === WARM_STAGES.length - 1;
+      w.stage = wasLast ? WARM_START : w.stage + 1;
       STORE.save(state);
       SOUND.complete();
-      toast((w.stage === 0 ? 'Warmup round done' : 'Next: ' + WARM_STAGES[w.stage][0]) + ' · ' + acc + '% accurate');
+      renderWarmupPanel();
+      toast((wasLast ? 'Warmup round done' : 'Next: ' + WARM_STAGES[w.stage][0]) + ' · ' + acc + '% accurate');
       newLesson();
       return;
     }
