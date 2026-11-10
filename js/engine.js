@@ -15,6 +15,10 @@
   const COOLDOWN = 3; // lessons a rotated-out key rests
   // A key leaves single-key focus once it is reasonably solid (it keeps being
   // trained in the mixed phase until fully learned).
+  const LETTERS = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const LETTER_ACC = 0.9; // a letter below this gets mixed into drills
+  const LETTER_MIN = 8; // weighted samples before a letter can count as weak
+  const LETTER_MAX = 3; // at most this many weak letters at once
   const LEARN_ACC = 0.92;
   const LEARN_SPEED = 0.7; // fraction of the target speed
   function inLearnPhase(state, st) {
@@ -130,6 +134,16 @@
       .slice(0, limit || 3);
   }
 
+  // Letters below LETTER_ACC with enough samples, weakest first.
+  function weakLetters(state, now) {
+    now = now || Date.now();
+    return LETTERS.map((ch) => ({ ch, st: stats(state, ch, now) }))
+      .filter((x) => x.st.eff >= LETTER_MIN && x.st.acc != null && x.st.acc < LETTER_ACC)
+      .sort((a, b) => a.st.acc - b.st.acc)
+      .slice(0, LETTER_MAX)
+      .map((x) => x.ch);
+  }
+
   // Lesson plan for Adaptive mode: focus, secondary keys, and a contrast partner.
   function plan(state) {
     const now = Date.now();
@@ -146,7 +160,7 @@
     if (focus && state.settings.focusStyle !== 'mixed') {
       if (inLearnPhase(state, stats(state, focus, now))) phase = 'learn';
     }
-    return { focus, secondary, partner, phase };
+    return { focus, secondary, partner, phase, letters: weakLetters(state, now) };
   }
 
   // Called after every lesson. perKey: ch -> { n, ok, tSum, tN }. Returns event strings.
@@ -254,8 +268,8 @@
   }
 
   CTT.ENGINE = {
-    record, recordPair, stats, unlockedList, focusKey, plan, afterLesson, forceUnlock, weakness,
+    record, recordPair, stats, unlockedList, focusKey, plan, afterLesson, forceUnlock, weakness, weakLetters, LETTERS,
     topConfusions, allConfusions, slowPairs,
-    CONST: { DAY, HALF_LIFE_D, MAX_AGE_D, ACC_TARGET, INTERVALS, MIN_EFF },
+    CONST: { DAY, HALF_LIFE_D, MAX_AGE_D, ACC_TARGET, INTERVALS, MIN_EFF, LETTER_ACC, LETTER_MIN },
   };
 })();

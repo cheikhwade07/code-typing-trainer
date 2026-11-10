@@ -145,14 +145,24 @@
     'last_seen', 'best_score', 'page_size', 'item_price', 'new_list'];
   const PRIVATE = ['_helper', '_cache', '_build', '_reset', '_size', '_data', '_check'];
 
+  // Weak letters (set per lesson): about half of the names picked contain one.
+  let weakLetters = [];
+  function pickId(arr) {
+    if (weakLetters.length && Math.random() < 0.5) {
+      const m = arr.filter((w) => weakLetters.some((c) => w.includes(c)));
+      if (m.length) return pick(m);
+    }
+    return pick(arr);
+  }
+
   function fill(tpl) {
     return tpl
-      .replace(/§_§/g, () => pick(SNAKE))
-      .replace(/(^|[^\w])_§/g, (m, pre) => pre + pick(PRIVATE))
-      .replace(/def §\(/g, () => 'def ' + pick(FUNCS.slice(17)) + '(')
-      .replace(/(^|[^.\w])§\(/g, (m, pre) => pre + pick(FUNCS) + '(')
-      .replace(/§/g, () => pick(IDS))
-      .replace(/¤/g, () => (Math.random() < 0.35 ? pick(NUMS) : pick(IDS)))
+      .replace(/§_§/g, () => pickId(SNAKE))
+      .replace(/(^|[^\w])_§/g, (m, pre) => pre + pickId(PRIVATE))
+      .replace(/def §\(/g, () => 'def ' + pickId(FUNCS.slice(17)) + '(')
+      .replace(/(^|[^.\w])§\(/g, (m, pre) => pre + pickId(FUNCS) + '(')
+      .replace(/§/g, () => pickId(IDS))
+      .replace(/¤/g, () => (Math.random() < 0.35 ? pick(NUMS) : pickId(IDS)))
       .replace(/¶/g, () => pick(NUMS.filter((n) => n[0] !== '-')));
   }
 
@@ -177,10 +187,15 @@
       const s = fill(pick(short));
       if (ok(s)) return s;
     }
-    return pick(IDS) + ch + pick(IDS);
+    return pickId(IDS) + ch + pickId(IDS);
   }
 
   function adaptive(unlocked, plan, length) {
+    weakLetters = plan.letters || [];
+    try { return adaptiveText(unlocked, plan, length); } finally { weakLetters = []; }
+  }
+
+  function adaptiveText(unlocked, plan, length) {
     const unl = new Set(unlocked);
     if (plan.partner) unl.add(plan.partner);
     const withChar = (c) => TEMPLATES.filter((t) => t.includes(c));
@@ -220,10 +235,12 @@
   }
 
   // Weighted pick of lines toward weak symbols. weakness(ch) -> 0..1
-  function lines(weakness, count) {
+  // letters: weak letters; lines using them get a small extra weight.
+  function lines(weakness, count, letters) {
     const pool = LINES.map((l) => {
       let w = 1;
       for (const c of symbolsIn(l)) w += 2 * weakness(c);
+      for (const c of letters || []) w += 0.25 * Math.min(4, l.split(c).length - 1);
       return { l, w };
     });
     const out = [];

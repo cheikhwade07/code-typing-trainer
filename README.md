@@ -54,6 +54,10 @@ works, without automatic saving.
 - **Mix-ups**: wrong keys are recorded (for example `-` typed for `_`), and
   the top mix-up partner is drilled next to the focus key, even if it is not
   unlocked yet.
+- **Weak letters**: letters are tracked too. Up to 3 letters below 90%
+  accuracy (with enough recent samples) get mixed in: about half of the
+  names in Adaptive drills contain one, and Lines leans toward lines that use
+  them. Symbols stay the focus. Stats and the report list the weakest letters.
 - **Slow transitions**: timing between consecutive keys involving a symbol
   (for example `](`) is recorded and listed in Stats and the report.
 

@@ -66,6 +66,20 @@
     }
     out.push('');
 
+    const weakL = new Set(ENGINE.weakLetters(state, now));
+    const lets = ENGINE.LETTERS.map((ch) => ({ ch, st: ENGINE.stats(state, ch, now) }))
+      .filter((x) => x.st.n > 0)
+      .sort((a, b) => a.st.acc - b.st.acc);
+    out.push('## Letters (weakest first; below ' + Math.round(ENGINE.CONST.LETTER_ACC * 100) + '% with ' + ENGINE.CONST.LETTER_MIN + '+ weighted samples get mixed into drills)', '');
+    if (lets.length) {
+      out.push('| Key | Samples (21d) | Accuracy | Speed (WPM) | Top mix-up | In drills | Finger |', '|---|---|---|---|---|---|---|');
+      lets.forEach(({ ch, st }) => {
+        const mix = ENGINE.topConfusions(state, ch, 1)[0];
+        out.push('| `' + ch + '` | ' + st.n + ' | ' + pct(st.acc) + ' | ' + num(st.wpm) + ' | ' + (mix ? '`' + show(mix.typed) + '` ×' + mix.count : '–') + ' | ' + (weakL.has(ch) ? 'yes' : '–') + ' | ' + LAYOUT.describe(ch) + ' |');
+      });
+    } else out.push('None recorded yet.');
+    out.push('');
+
     const conf = ENGINE.allConfusions(state, 12);
     out.push('## Top mix-ups (expected → typed, last 21 days)', '');
     if (conf.length) {

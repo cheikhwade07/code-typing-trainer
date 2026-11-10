@@ -134,7 +134,7 @@
       return CONTENT.adaptive(ENGINE.unlockedList(state), plan, state.settings.lessonLen);
     }
     if (mode === 'lines') {
-      return CONTENT.lines((ch) => ENGINE.weakness(state, ch), 3);
+      return CONTENT.lines((ch) => ENGINE.weakness(state, ch), 3, ENGINE.weakLetters(state));
     }
     const lines = CONTENT.normalizeCode(state.mycode.text || '');
     if (!lines.length) return null;
@@ -408,6 +408,7 @@
         const also = p.secondary.filter((c) => c !== p.partner).slice(0, 4);
         if (p.phase !== 'learn' && also.length) html += ' · also <b>' + also.map(esc).join(' ') + '</b>';
       }
+      if (p.letters.length) html += (html ? ' · ' : '') + 'letters <b>' + p.letters.join(' ') + '</b>';
     } else if (state.mode === 'warmup') {
       const w = warm();
       html = 'Warmup · <b>' + LAYOUT.FINGER_NAMES[w.finger] + '</b> · ' + WARM_STAGES[w.stage][0] +
@@ -740,6 +741,14 @@
       items.forEach((t) => { const li = document.createElement('li'); li.textContent = t; el.appendChild(li); });
     };
     fill('mixList', ENGINE.allConfusions(state, 8).map((c) => showChar(c.expected) + '  →  ' + showChar(c.typed) + '   ×' + c.count), 'No mix-ups recorded yet.');
+    const LA = ENGINE.CONST.LETTER_ACC;
+    const weakL = new Set(ENGINE.weakLetters(state, now));
+    const letters = ENGINE.LETTERS.map((ch) => ({ ch, st: ENGINE.stats(state, ch, now) }))
+      .filter((x) => x.st.n >= 5)
+      .sort((a, b) => a.st.acc - b.st.acc)
+      .slice(0, 8);
+    fill('letterList', letters.map((x) => x.ch + '   ' + pct(x.st.acc) + '   (' + x.st.n + ')' +
+      (weakL.has(x.ch) ? '   ← in drills' : x.st.acc < LA ? '   needs more samples' : '')), 'Needs 5+ samples per letter.');
     fill('pairList', ENGINE.slowPairs(state, 8).map((p) => p.pair.replace(/ /g, '␣') + '   ' + p.median + ' ms   (' + p.n + ')'), 'Needs 5+ samples per pair.');
     $('fileInfo').textContent = FILES.server()
       ? 'Auto-saving after every lesson to data/progress.json and data/report.md.'
