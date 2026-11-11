@@ -127,7 +127,23 @@
     return serverQueue;
   }
 
+  // Words mode progress: its own request and queue, so it never delays a main save.
+  let wordsQueue = Promise.resolve(true);
+  function serverSaveWords(words) {
+    const body = JSON.stringify({ words });
+    wordsQueue = wordsQueue.then(async () => {
+      try {
+        const r = await fetch('api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+        return r.ok;
+      } catch (e) {
+        return false;
+      }
+    });
+    return wordsQueue;
+  }
+
   CTT.FILES = {
+    serverSaveWords,
     supported, restore, reconnect, choose, readJson, write, detectServer, serverSave,
     server: () => server,
     connected: () => !!dir,

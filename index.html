@@ -13,6 +13,7 @@
       <button data-mode="adaptive" title="Adaptive symbol drills, keybr-style">Adaptive</button>
       <button data-mode="lines" title="Real Python lines weighted toward your weak keys">Lines</button>
       <button data-mode="mycode" title="Retype your own code">My code</button>
+      <button data-mode="words" title="Letters unlock one at a time, keybr-style, with AI/ML words. Separate stats.">Words</button>
       <button data-mode="warmup" title="Find one finger's keys, row by row. Not counted in stats.">Warmup</button>
     </nav>
     <div class="actions">
@@ -50,7 +51,13 @@
   </main>
 
   <main id="statsView" hidden>
-    <h2>Progress</h2>
+    <div class="stats-head">
+      <h2>Progress</h2>
+      <div class="seg" role="tablist" aria-label="Stats for">
+        <button type="button" id="statsSym" class="on">Symbols</button>
+        <button type="button" id="statsWords">Words</button>
+      </div>
+    </div>
     <canvas id="chart" class="chart"></canvas>
     <div id="summary" class="summary"></div>
     <div class="report-bar">
@@ -60,7 +67,7 @@
         <button id="downloadReport" class="ghost">Download report</button>
       </span>
     </div>
-    <h2>Symbols <span class="muted small">last 21 days, recent attempts count more</span></h2>
+    <h2><span id="keysTitle">Symbols</span> <span class="muted small">last 21 days, recent attempts count more</span></h2>
     <table class="keytable">
       <thead><tr><th>Key</th><th>Status</th><th>Samples</th><th>Accuracy</th><th>Speed</th><th title="Speed toward target x how sure we are your accuracy is at least 93%. 100% = mastered (cleared on 2 different days).">Confidence</th><th>Review</th><th>Finger</th></tr></thead>
       <tbody id="keyRows"></tbody>
@@ -69,8 +76,10 @@
       <div><h2>Top mix-ups <span class="muted small">expected → typed</span></h2><ul id="mixList" class="plain"></ul></div>
       <div><h2>Slowest transitions <span class="muted small">median ms</span></h2><ul id="pairList" class="plain"></ul></div>
     </div>
-    <h2>Weakest letters <span class="muted small">below 90% get mixed into Adaptive and Lines</span></h2>
-    <ul id="letterList" class="plain"></ul>
+    <div id="letterBlock">
+      <h2>Weakest letters <span class="muted small">below 90% get mixed into Adaptive and Lines</span></h2>
+      <ul id="letterList" class="plain"></ul>
+    </div>
   </main>
 
   <div id="toast" class="toast" hidden></div>
@@ -84,8 +93,9 @@
           <option value="mixed">Balanced mix</option>
         </select>
       </label>
-      <label>Target speed per key (WPM) <input type="number" id="sTarget" min="10" max="120" step="1"></label>
-      <label>Adaptive lesson length (chars) <input type="number" id="sLen" min="30" max="200" step="5"></label>
+      <label>Target speed per symbol (WPM) <input type="number" id="sTarget" min="10" max="120" step="1"></label>
+      <label>Target speed per letter, Words mode (WPM) <input type="number" id="sWordsTarget" min="10" max="150" step="1"></label>
+      <label><span id="sLenLabel">Adaptive lesson length (characters)</span> <input type="number" id="sLen" min="30" max="200" step="5"></label>
       <label class="check"><input type="checkbox" id="sStop"> Stop on error (must fix a wrong key before moving on)</label>
       <label class="check"><input type="checkbox" id="sSound"> Sounds</label>
       <label>Volume <input type="range" id="sVol" min="0" max="1" step="0.05"></label>
@@ -95,6 +105,7 @@
       <fieldset class="sync">
         <legend>Sync across devices (GitHub Gist)</legend>
         <p class="muted small" id="syncInfo"></p>
+        <p class="muted small warn" id="wordsSyncInfo" hidden></p>
         <div class="row wrap" id="syncConnectRow">
           <input type="password" id="sToken" placeholder="GitHub token with gist scope" autocomplete="off" spellcheck="false">
           <button type="button" id="sConnect">Connect</button>
@@ -109,6 +120,7 @@
       <div class="row wrap">
         <button type="button" id="sUnlock" class="ghost">Unlock next symbol</button>
         <button type="button" id="sExport" class="ghost">Export progress</button>
+        <button type="button" id="sExportWords" class="ghost">Export Words progress</button>
         <button type="button" id="sImport" class="ghost">Import progress</button>
         <button type="button" id="sReset" class="danger">Reset progress</button>
         <input type="file" id="sImportFile" accept="application/json" hidden>
@@ -119,6 +131,7 @@
 
   <script src="js/layout.js"></script>
   <script src="js/content.js"></script>
+  <script src="js/words.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/store.js"></script>
   <script src="js/sound.js"></script>

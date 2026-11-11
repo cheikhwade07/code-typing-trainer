@@ -3,6 +3,9 @@
 (function () {
   const CTT = (window.CTT = window.CTT || {});
   const { TRAIN } = CTT.CONTENT;
+  // Key order of a tracked state: the main state trains symbols (TRAIN); a sub-state
+  // (Words mode) carries its own non-persisted `order` (lowercase letters).
+  const ord = (state) => state.order || TRAIN;
 
   const DAY = 86400000;
   const HALF_LIFE_D = 10; // a sample's weight halves every 10 days
@@ -126,7 +129,7 @@
     const nowGood = w >= MIN_EFF && acc >= LEARN_ACC && wpm != null && wpm >= LEARN_SPEED * target;
     const lostGood = w >= MIN_EFF && acc < GOOD_RESET;
 
-    const locked = TRAIN.indexOf(ch) >= state.unlocked;
+    const locked = ord(state).indexOf(ch) >= state.unlocked;
     let status = 'learning';
     if (locked) status = 'locked';
     else if (k.level >= 1 && k.due != null && k.due <= now) status = 'review due';
@@ -139,7 +142,7 @@
   }
 
   function unlockedList(state) {
-    return TRAIN.slice(0, state.unlocked);
+    return ord(state).slice(0, state.unlocked);
   }
 
   function needsWork(st) {
@@ -151,7 +154,7 @@
     const now = Date.now();
     // Single-key style: stay on the current focus key until it leaves the learn phase.
     const run = state.focusRun;
-    if (state.settings.focusStyle !== 'mixed' && run && TRAIN.indexOf(run.ch) < state.unlocked && !(state.cooldown[run.ch] > 0)) {
+    if (state.settings.focusStyle !== 'mixed' && run && ord(state).indexOf(run.ch) < state.unlocked && !(state.cooldown[run.ch] > 0)) {
       const st = stats(state, run.ch, now);
       if (inLearnPhase(state, st)) return run.ch;
     }
@@ -195,7 +198,7 @@
     const secondary = unl.filter((ch) => ch !== focus && needsWork(stats(state, ch, now)));
     const top = focus ? topConfusions(state, focus, 1)[0] : null;
     // The mix-up partner is drilled even if it is not unlocked yet (e.g. - for _).
-    const partner = top && TRAIN.includes(top.typed) ? top.typed : null;
+    const partner = top && ord(state).includes(top.typed) ? top.typed : null;
     if (partner && !secondary.includes(partner)) secondary.push(partner);
     // keybr-style "learn" phase: while the focus key is new or weak, lessons are
     // almost entirely that one key so the finger movement becomes automatic.
@@ -203,7 +206,8 @@
     if (focus && state.settings.focusStyle !== 'mixed') {
       if (inLearnPhase(state, stats(state, focus, now))) phase = 'learn';
     }
-    return { focus, secondary, partner, phase, letters: weakLetters(state, now) };
+    // Weak-letter mixing belongs to the main (symbol) state only.
+    return { focus, secondary, partner, phase, letters: state.order ? [] : weakLetters(state, now) };
   }
 
   // Called after every lesson. perKey: ch -> { n, ok, tSum, tN }. Returns event strings.
@@ -289,7 +293,7 @@
     if (u.ready) {
       state.unlocked++;
       state.sinceUnlock = 0;
-      events.push('New symbol unlocked: ' + TRAIN[state.unlocked - 1] + (u.allGood ? '' : ' (keep drilling the weak ones)'));
+      events.push('New ' + (state.order ? 'letter' : 'symbol') + ' unlocked: ' + ord(state)[state.unlocked - 1] + (u.allGood ? '' : ' (keep drilling the weak ones)'));
     }
     return events;
   }
@@ -304,7 +308,7 @@
   // Whether the next symbol unlocks now, and why not if it does not.
   function unlockStatus(state, now) {
     now = now || Date.now();
-    if (state.unlocked >= TRAIN.length) return { ready: false, done: true, notGood: [], low: [], since: 0, left: 0 };
+    if (state.unlocked >= ord(state).length) return { ready: false, done: true, notGood: [], low: [], since: 0, left: 0 };
     const sts = unlockedList(state).map((ch) => ({ ch, st: stats(state, ch, now) }));
     const notGood = sts.filter((x) => !x.st.good).map((x) => x.ch);
     const low = sts.filter((x) => x.st.eff >= MIN_EFF && x.st.acc < STALL_FLOOR).map((x) => x.ch);
@@ -315,15 +319,15 @@
   }
 
   function forceUnlock(state) {
-    if (state.unlocked >= TRAIN.length) return null;
+    if (state.unlocked >= ord(state).length) return null;
     state.unlocked++;
     state.sinceUnlock = 0;
-    return TRAIN[state.unlocked - 1];
+    return ord(state)[state.unlocked - 1];
   }
 
   // 0 (strong) .. 1 (weak); locked keys count as medium.
   function weakness(state, ch) {
-    if (TRAIN.indexOf(ch) >= state.unlocked) return 0.5;
+    if (ord(state).indexOf(ch) >= state.unlocked) return 0.5;
     const st = stats(state, ch);
     if (st.status === 'review due' || st.status === 'stale') return Math.max(0.6, 1 - st.conf);
     return 1 - st.conf;
@@ -350,13 +354,14 @@
   }
 
   // Plain-language unlock status, e.g. "= in 4 adaptive lessons".
-  CTT.unlockText = function (u, next) {
-    if (u.done) return 'all symbols unlocked';
+  CTT.unlockText = function (u, next, noun, lessonNoun) {
+    const ln = lessonNoun || 'adaptive lesson';
+    if (u.done) return 'all ' + (noun || 'symbol') + 's unlocked';
     if (u.allGood) return next + ' unlocks after the next lesson';
     const nm = (a) => a.join(' ');
     if (u.low.length) return next + ' waits until ' + nm(u.low) + ' ' + (u.low.length > 1 ? 'are' : 'is') + ' back above ' + Math.round(STALL_FLOOR * 100) + '%';
     if (u.notGood.length > MAX_NOT_GOOD) return next + ' waits until at most ' + MAX_NOT_GOOD + ' keys are still weak (now: ' + nm(u.notGood) + ')';
-    return next + ' in ' + u.left + ' adaptive lesson' + (u.left === 1 ? '' : 's') + ', or sooner once ' + nm(u.notGood) + (u.notGood.length === 1 ? ' reaches ' : ' reach ') + Math.round(LEARN_ACC * 100) + '%';
+    return next + ' in ' + u.left + ' ' + ln + (u.left === 1 ? '' : 's') + ', or sooner once ' + nm(u.notGood) + (u.notGood.length === 1 ? ' reaches ' : ' reach ') + Math.round(LEARN_ACC * 100) + '%';
   };
 
   CTT.ENGINE = {

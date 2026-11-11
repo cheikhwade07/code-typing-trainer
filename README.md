@@ -33,6 +33,16 @@ works, without automatic saving.
   Enter at each line break.
 - **My code**: paste code you have already written and retype it in chunks of
   4 lines. Indentation fills in automatically.
+- **Words** (side mode): keybr-style letter training with everyday and AI/ML
+  words (*attention, gradient, tensor...*). Starts with 10 letters
+  (`e t a o i n s r h l`) and unlocks the rest by frequency, using the same
+  mastery and unlock rules as the symbols, with its own target speed
+  (Settings, default 35 WPM). Once all 26 letters are unlocked, about half
+  the lessons are short original ML sentences. Its progress is a separate
+  save (browser, gist file, `data/words.json`), so Words typing never changes
+  the symbol progress or its saves. Stats has a *Symbols | Words* toggle;
+  Copy/Download report add a Words section once you have a Words lesson.
+  Lesson length, Unlock and Reset in Settings act on the mode on screen.
 - **Warmup**: pick a finger and a round (tour, home row, top row, bottom row,
   number row, mix). Rounds reach from the home key to each of its keys
   and back (`;p ;p p;`), row by row: home row, top row, bottom row, number
@@ -76,8 +86,9 @@ every lesson (the header shows "✓ Auto-saving"):
 
 - `data/progress.json`: full progress (the durable copy)
 - `data/report.md`: a readable metrics report to share for analysis
+- `data/words.json`: Words mode progress (not tracked by git)
 
-`server.py` only listens on 127.0.0.1 and only writes those two files. The
+`server.py` only listens on 127.0.0.1 and only writes those files. The
 browser keeps a local copy too; on open, whichever copy is newer wins.
 Stats → **Copy report** copies the report to the clipboard.
 
@@ -93,7 +104,8 @@ after a restart).
 2. Paste it in Settings → **Sync across devices** → Connect, once per browser.
 
 The trainer then finds or creates one secret gist
-(`code-typing-trainer-progress.json` and `code-typing-trainer-report.md`),
+(`code-typing-trainer-progress.json` and `code-typing-trainer-report.md`, plus
+`code-typing-trainer-words.json` once you use Words mode),
 uploads a few seconds after each lesson, and loads the newer copy when the page
 opens or the tab regains focus. The header shows "☁ Synced". The token stays
 in that browser's storage only (never in exports or the gist). A secret gist is
@@ -112,7 +124,8 @@ typing stats. If the token expires or is revoked, the header shows
 - Per-symbol accuracy, speed, and confidence; progress chart; practice time
   today.
 - Progress saved to `data/` (see above) and in the browser; Settings → Export
-  makes an extra backup.
+  makes an extra backup (Export Words progress for Words mode; Import accepts
+  either file).
 
 ## Files
 
@@ -123,6 +136,7 @@ index.html
 css/style.css
 js/layout.js    US QWERTY geometry, fingers, char -> key
 js/content.js   symbol order, token templates, idiom lines, generators
+js/words.js     Words mode: letter order, word list, original ML sentences
 js/engine.js    decayed per-key stats, reviews, rotation, mix-ups, pairs
 js/store.js     browser copy, version migration, export
 js/sound.js     Web Audio sounds

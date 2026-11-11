@@ -147,7 +147,100 @@
     }
   }
 
+  // ---------- Words mode: its own file in the same gist ----------
+  // Separate pull/push with its own status. A Words PATCH lists only the Words file,
+  // and GitHub leaves files that are not listed untouched, so Words uploads can never
+  // change the progress or report files. The main functions above are unchanged.
+  const WFILE = 'code-typing-trainer-words.json';
+  let wStatus = 'idle'; // idle | syncing | ok | auth | error
+  const wListeners = [];
+  function setWStatus(s) {
+    wStatus = s;
+    wListeners.forEach((f) => f(s));
+  }
+
+  // null (not connected) | { state: 'ok', data } | { state: 'missing' } | { state: 'bad' } | { state: 'unknown' }
+  // Throws on network or auth errors, like pull().
+  async function pullWords() {
+    const id = get(K_ID);
+    if (!get(K_TOKEN) || !id) return null;
+    setWStatus('syncing');
+    try {
+      const g = await gh('/gists/' + id);
+      const f = g.files && g.files[WFILE];
+      if (!f) {
+        setWStatus('ok');
+        return { state: 'missing' };
+      }
+      const text = await fileContent(f);
+      if (text == null) {
+        setWStatus('error');
+        return { state: 'unknown' }; // could not read it: never overwrite
+      }
+      let data = null;
+      try { data = JSON.parse(text); } catch (e) { /* bad */ }
+      setWStatus('ok');
+      return data && typeof data === 'object' && !Array.isArray(data) && data.kind === 'ctt-words'
+        ? { state: 'ok', data }
+        : { state: 'bad' };
+    } catch (e) {
+      setWStatus(e.auth ? 'auth' : 'error');
+      throw e;
+    }
+  }
+
+  let wPending = null;
+  let wTimer = null;
+  let wInflight = false;
+  let wGen = 0; // bumped by cancelWords: an upload already in flight is not retried
+  function pushWords(words, delay) {
+    if (!get(K_TOKEN) || !get(K_ID)) return;
+    wPending = JSON.stringify(words); // snapshot now
+    clearTimeout(wTimer);
+    wTimer = setTimeout(flushWords, delay == null ? 4000 : delay);
+  }
+  function cancelWords() {
+    wGen++;
+    wPending = null;
+    clearTimeout(wTimer);
+  }
+  async function flushWords() {
+    if (!wPending || wInflight) return;
+    if (!get(K_TOKEN) || !get(K_ID)) { wPending = null; return; }
+    if (inflight || pending) { // main upload (in flight or queued) goes first
+      clearTimeout(wTimer);
+      wTimer = setTimeout(flushWords, 1000);
+      return;
+    }
+    const content = wPending;
+    const gen = wGen;
+    wPending = null;
+    wInflight = true;
+    setWStatus('syncing');
+    try {
+      await gh('/gists/' + get(K_ID), {
+        method: 'PATCH',
+        body: JSON.stringify({ files: { [WFILE]: { content } } }),
+      });
+      setWStatus('ok');
+    } catch (e) {
+      setWStatus(e.auth ? 'auth' : 'error');
+      // retry later, like main, unless a newer copy was adopted meanwhile
+      if (!e.auth && !wPending && gen === wGen) wPending = content;
+    } finally {
+      wInflight = false;
+      if (wPending) {
+        clearTimeout(wTimer);
+        wTimer = setTimeout(flushWords, 4000);
+      }
+    }
+  }
+
   CTT.SYNC = {
+    pullWords, pushWords, flushWords, cancelWords,
+    wordsStatus: () => wStatus,
+    onWordsStatus: (f) => wListeners.push(f),
+    WORDS_FILE: WFILE,
     connect, disconnect, startup, push, flush,
     enabled: () => !!(get(K_TOKEN) && get(K_ID)),
     status: () => status,

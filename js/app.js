@@ -1,9 +1,15 @@
 // Main controller: lessons, typing loop, rendering, settings, stats view.
 (function () {
-  const { LAYOUT, CONTENT, ENGINE, STORE, SOUND, CHART, FILES, REPORT, SYNC } = window.CTT;
+  const { LAYOUT, CONTENT, ENGINE, STORE, SOUND, CHART, FILES, REPORT, SYNC, WORDS } = window.CTT;
   const $ = (id) => document.getElementById(id);
 
   let state = STORE.load();
+  // Words mode has its own save (STORE.loadWords); `state` above is only the symbol
+  // progress, in exactly the format it had before Words existed.
+  let words = STORE.loadWords();
+  let wordsOn = STORE.wordsActive(); // device-local: which mode is on screen
+  let serverWords = false; // server.py knows data/words.json
+  const curMode = () => (wordsOn ? 'words' : state.mode);
   let lesson = null;
   let spans = [];
   const shiftsDown = new Set();
@@ -80,7 +86,7 @@
   }
   function renderWarmupPanel() {
     const p = $('warmupPanel');
-    p.hidden = state.mode !== 'warmup';
+    p.hidden = curMode() !== 'warmup';
     if (p.hidden) return;
     const w = warm();
     p.innerHTML = '';
@@ -118,16 +124,50 @@
   }
   function renderWarmKeys() {
     const kb = $('keymap');
-    const on = state.mode === 'warmup';
+    const on = curMode() === 'warmup';
     kb.classList.toggle('warm', on);
     const f = on ? warm().finger : null;
     kb.querySelectorAll('.key').forEach((k) => k.classList.toggle('wf', on && k.dataset.f === f));
   }
 
   // ---------- lesson creation ----------
+  // ---------- tracked state: main (symbols) or Words mode ----------
+  // Words mode trains on `words`, its own save, which the engine treats like the main
+  // state. `order` and `settings` are added as non-enumerable properties so they are
+  // never saved, exported or synced; `settings` is a copy, so the engine cannot write
+  // into the main settings.
+  function wordsState() {
+    const w = words;
+    if (!Object.prototype.hasOwnProperty.call(w, 'order')) {
+      Object.defineProperty(w, 'order', { value: WORDS.ORDER, enumerable: false, configurable: true });
+      Object.defineProperty(w, 'settings', {
+        get() { return { ...state.settings, targetWpm: this.prefs.targetWpm }; },
+        enumerable: false,
+        configurable: true,
+      });
+    }
+    return w;
+  }
+  const isWords = (mode) => (mode || curMode()) === 'words';
+  // State that the current mode reads and records into.
+  function trk(mode) {
+    return isWords(mode) ? wordsState() : state;
+  }
+  function keyOrder(S) {
+    return S.order || CONTENT.TRAIN;
+  }
+
   function buildText() {
-    const mode = state.mode;
+    const mode = curMode();
     if (mode === 'warmup') return warmupText();
+    if (mode === 'words') {
+      const W = wordsState();
+      const plan = ENGINE.plan(W);
+      const all = W.unlocked >= WORDS.ORDER.length;
+      buildText.sentences = all && Math.random() < 0.5;
+      buildText.focus = buildText.sentences ? null : plan.focus;
+      return WORDS.text(ENGINE.unlockedList(W), plan, W.prefs.lessonLen, buildText.sentences);
+    }
     if (mode === 'adaptive') {
       const plan = ENGINE.plan(state);
       buildText.focus = plan.focus;
@@ -151,9 +191,10 @@
 
   function newLesson() {
     buildText.focus = null;
+    buildText.sentences = false;
     const text = buildText();
-    $('mycodePanel').hidden = !(state.mode === 'mycode' && (!text || $('mycodePanel').dataset.open === '1'));
-    if (state.mode === 'mycode') updateMycodeInfo();
+    $('mycodePanel').hidden = !(curMode() === 'mycode' && (!text || $('mycodePanel').dataset.open === '1'));
+    if (curMode() === 'mycode') updateMycodeInfo();
     renderWarmupPanel();
     renderWarmKeys();
     if (!text) {
@@ -172,8 +213,9 @@
       else lineStart = false;
     }
     lesson = {
-      text, mode: state.mode, pos: 0, auto, errorsAt: new Set(), start: null, lastT: null,
+      text, mode: curMode(), pos: 0, auto, errorsAt: new Set(), start: null, lastT: null,
       sameHand: 0, shifted: 0, done: false, typed: 0, perKey: {}, prevCh: null, focus: buildText.focus,
+      sentences: buildText.sentences,
     };
     skipAuto();
     renderText();
@@ -230,6 +272,131 @@
     pullGist();
   });
 
+  // ---------- Words mode persistence (separate from everything above) ----------
+  // Words lessons never call persist(), so they never change the main save or its
+  // savedAt, and the main save never contains Words data.
+  function persistWords() {
+    STORE.saveWords(words);
+    if (SYNC.enabled()) SYNC.pushWords(words);
+    if (FILES.server()) {
+      if (serverWords) FILES.serverSaveWords(words);
+      return;
+    }
+    if (FILES.connected()) FILES.write('words.json', JSON.stringify(words, null, 1));
+  }
+  function refreshWords() {
+    if (!isWords()) return;
+    renderStrip();
+    renderMetrics();
+    newLesson();
+  }
+  // A newer copy from the gist, server or folder replaces this browser's Words progress.
+  function adoptWords(raw, msg) {
+    SYNC.cancelWords(); // an older queued upload must not overwrite it
+    words = STORE.mergeWords(raw);
+    STORE.saveWords(words, true); // keep its savedAt
+    if ($('settings').open) {
+      // An open Settings dialog must not write its old Words values back on close.
+      $('sWordsTarget').value = words.prefs.targetWpm;
+      if (wordsOn) $('sLen').value = words.prefs.lessonLen;
+    }
+    guardWords(refreshWords);
+    if (msg) toast(msg);
+  }
+  // savedAt of a copy from elsewhere, read the same way it will be stored.
+  const savedAtOf = (raw) => STORE.mergeWords(raw).savedAt;
+  // Newest copy wins (server and folder): adopt it, or write ours if ours is newer.
+  function wordsFromCopy(remote, save) {
+    const valid = remote && typeof remote === 'object' && remote.kind === 'ctt-words';
+    const R = valid ? savedAtOf(remote) : 0;
+    if (valid && R > (words.savedAt || 0)) adoptWords(remote);
+    else if ((words.savedAt || 0) > 0 && R !== (words.savedAt || 0)) save();
+  }
+  // Startup, tab refocus and Sync now: newest Words copy wins.
+  async function pullWordsGist() {
+    if (!SYNC.enabled()) return;
+    let r;
+    try {
+      r = await SYNC.pullWords();
+    } catch (e) {
+      return; // status is shown in Settings; nothing changes locally
+    }
+    if (!r || r.state === 'unknown') return;
+    const L = words.savedAt || 0;
+    if (r.state === 'ok') {
+      const R = savedAtOf(r.data);
+      if (R > L) adoptWords(r.data, 'Loaded synced Words progress');
+      else if (L > R) SYNC.pushWords(words, 0);
+    } else if (L > 0) {
+      SYNC.pushWords(words, 0); // missing or unreadable copy: replace it (gist history keeps the old one)
+    }
+  }
+  // After connecting: same choice as for the symbols, for the Words file.
+  async function wordsAfterConnect() {
+    let r;
+    try {
+      r = await SYNC.pullWords();
+    } catch (e) {
+      return;
+    }
+    if (!r || r.state === 'unknown') return;
+    if (r.state === 'ok') {
+      const nL = words.lessons.length;
+      const nR = Array.isArray(r.data.lessons) ? r.data.lessons.length : 0;
+      const R = savedAtOf(r.data);
+      if (nR > 0 && R !== words.savedAt) {
+        let useRemote = nL === 0 || R > (words.savedAt || 0);
+        if (!useRemote) {
+          useRemote = !confirm('Words mode: this browser has ' + nL + ' Words lessons; the synced copy has ' + nR +
+            '. OK keeps this browser\'s Words progress and overwrites the synced copy. Cancel loads the synced copy instead.');
+        }
+        if (useRemote) {
+          adoptWords(r.data, 'Loaded synced Words progress');
+          return;
+        }
+      }
+    }
+    if ((words.savedAt || 0) > 0) SYNC.pushWords(words, 0);
+  }
+  let lastPullW = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !SYNC.enabled()) return;
+    if (Date.now() - lastPullW < 30000) return;
+    lastPullW = Date.now();
+    pullWordsGist();
+  });
+  // Words only reaches the gist if a test build left it inside the main save: copy it
+  // once into an empty Words save.
+  function seedWordsFromLegacy() {
+    const legacy = STORE.takeLegacyWords();
+    if (!legacy || words.lessons.length) return;
+    const w = STORE.mergeWords(legacy.words);
+    if (!w.lessons.length) return;
+    if (Number.isFinite(legacy.targetWpm)) w.prefs.targetWpm = Math.min(150, Math.max(10, legacy.targetWpm));
+    w.savedAt = 1; // oldest possible: any real synced Words copy wins over it
+    words = w;
+    STORE.saveWords(words, true);
+  }
+  // Runs Words rendering; if bad Words data still throws, switch to the symbol mode
+  // so startup (sync, server detection) and the main tool keep working.
+  function guardWords(fn) {
+    try {
+      fn();
+    } catch (e) {
+      if (!wordsOn) throw e;
+      wordsOn = false;
+      STORE.setWordsActive(false);
+      document.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === curMode()));
+      renderStrip();
+      renderMetrics();
+      newLesson();
+      toast('Words mode data could not be shown; switched back to the symbols');
+    }
+  }
+  function combinedReport() {
+    return REPORT.build(state) + REPORT.buildWords(words, state.settings, Date.now());
+  }
+
   function renderSync() {
     const on = SYNC.enabled();
     $('syncConnectRow').hidden = on;
@@ -268,6 +435,7 @@
       }
       if (useRemote) adoptRemote(remote, 'Connected as ' + login + ', loaded synced progress');
       else { SYNC.push(state, REPORT.build(state), 0); toast('Connected as ' + login); }
+      await wordsAfterConnect();
     } catch (e) {
       toast(e.auth ? 'GitHub refused that token (needs the gist scope)' : 'Could not reach GitHub');
     } finally {
@@ -279,6 +447,25 @@
   $('sDisconnect').addEventListener('click', () => {
     SYNC.disconnect();
     toast('Sync off. The gist stays on GitHub; progress stays in this browser.');
+  });
+  $('sSyncNow').addEventListener('click', () => { lastPullW = Date.now(); pullWordsGist(); });
+  $('sDisconnect').addEventListener('click', () => SYNC.cancelWords());
+  function renderWordsSync(st) {
+    const el = $('wordsSyncInfo');
+    st = st || SYNC.wordsStatus();
+    el.textContent = !SYNC.enabled() ? ''
+      : st === 'auth' ? 'Words mode sync: GitHub refused the token.'
+        : st === 'error' ? 'Words mode sync: could not reach GitHub; it will retry.'
+          : '';
+    el.hidden = !el.textContent;
+  }
+  let wordsAuthShown = false;
+  SYNC.onWordsStatus((st) => {
+    renderWordsSync(st);
+    if (st === 'auth' && !wordsAuthShown) {
+      wordsAuthShown = true;
+      toast('Words sync: GitHub refused the token');
+    }
   });
 
   function renderFileBtn() {
@@ -325,6 +512,10 @@
     }
   }
 
+  async function wordsFromFolder() {
+    wordsFromCopy(await FILES.readJson('words.json'), () => FILES.write('words.json', JSON.stringify(words, null, 1)));
+  }
+
   $('fileBtn').addEventListener('click', async () => {
     $('fileBtn').blur();
     if (SYNC.enabled()) { $('settingsBtn').click(); return; }
@@ -337,6 +528,7 @@
       fileState = 'granted';
       renderFileBtn();
       await syncFromFile();
+      await wordsFromFolder();
     } catch (e) {
       /* picker cancelled */
     }
@@ -375,11 +567,12 @@
   function renderStrip() {
     const strip = $('keystrip');
     strip.innerHTML = '';
-    const focus = ENGINE.focusKey(state);
-    CONTENT.TRAIN.forEach((ch, i) => {
+    const S = trk();
+    const focus = ENGINE.focusKey(S);
+    keyOrder(S).forEach((ch, i) => {
       const d = document.createElement('div');
-      const st = ENGINE.stats(state, ch);
-      const locked = i >= state.unlocked;
+      const st = ENGINE.stats(S, ch);
+      const locked = i >= S.unlocked;
       const cls = { mastered: ' learned', 'review due': ' due', stale: ' stale' }[st.status] || '';
       d.className = 'sym' + (locked ? ' locked' : '') + (ch === focus && !locked ? ' focus' : '') + cls;
       d.textContent = ch;
@@ -399,8 +592,10 @@
   function renderFocus(extra) {
     const el = $('focusLine');
     let html = '';
-    if (state.mode === 'adaptive') {
-      const p = ENGINE.plan(state);
+    if (isWords() && lesson && lesson.sentences) {
+      html = 'Sentences · all letters unlocked · capitals and punctuation are not counted';
+    } else if (curMode() === 'adaptive' || isWords()) {
+      const p = ENGINE.plan(trk());
       const esc = (c) => c.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       if (p.focus) {
         html = (p.phase === 'learn' ? 'Learning <b>' : 'Focus <b>') + esc(p.focus) + '</b> · ' + LAYOUT.describe(p.focus);
@@ -409,11 +604,11 @@
         if (p.phase !== 'learn' && also.length) html += ' · also <b>' + also.map(esc).join(' ') + '</b>';
       }
       if (p.letters.length) html += (html ? ' · ' : '') + 'letters <b>' + p.letters.join(' ') + '</b>';
-    } else if (state.mode === 'warmup') {
+    } else if (curMode() === 'warmup') {
       const w = warm();
       html = 'Warmup · <b>' + LAYOUT.FINGER_NAMES[w.finger] + '</b> · ' + WARM_STAGES[w.stage][0] +
         ' · not counted in stats';
-    } else if (state.mode === 'mycode' && state.mycode.shown && lesson) {
+    } else if (curMode() === 'mycode' && state.mycode.shown && lesson) {
       const s = state.mycode.shown;
       html = 'Lines ' + s.from + '–' + s.to + ' of ' + s.total + ' · <u style="cursor:pointer">edit code</u>';
     }
@@ -485,12 +680,21 @@
   }
 
   function renderMetrics(last) {
-    const all = state.lessons;
+    const all = trk().lessons;
     const L = last || all[all.length - 1];
     const today = new Date().toDateString();
     const mins = all.filter((x) => new Date(x.ts).toDateString() === today).reduce((a, x) => a + (x.dur || 0), 0) / 60000;
     $('mToday').textContent = mins < 1 ? Math.round(mins * 60) + 's' : Math.round(mins) + 'm';
-    if (!L) return;
+    if (!L) {
+      $('mWpm').textContent = '–';
+      $('mAcc').textContent = '–';
+      $('mShift').textContent = '–';
+      $('mWpmD').textContent = '';
+      $('mWpmD').className = 'delta';
+      $('mAccD').textContent = '';
+      $('mAccD').className = 'delta';
+      return;
+    }
     $('mWpm').textContent = Math.round(L.wpm);
     $('mAcc').textContent = pct(L.acc);
     $('mShift').textContent = L.sameHand;
@@ -512,6 +716,13 @@
   }
 
   // ---------- typing ----------
+  // Warmup records nothing; Words mode records only lowercase letters.
+  function recordable(L, exp) {
+    if (L.mode === 'warmup') return false;
+    if (isWords(L.mode)) return exp >= 'a' && exp <= 'z' && exp.length === 1;
+    return true;
+  }
+
   function onChar(ch, e) {
     const L = lesson;
     if (!L || L.done) return;
@@ -528,17 +739,17 @@
         L.sameHand++;
         renderFocus('use ' + (req === 'ShiftLeft' ? 'LEFT' : 'RIGHT') + ' Shift for ' + showChar(ch));
       }
-      if (!L.errorsAt.has(L.pos) && L.mode !== 'warmup') {
+      if (!L.errorsAt.has(L.pos) && recordable(L, exp)) {
         let t = L.lastT === null ? null : now - L.lastT;
         if (t != null && t > 3000) t = null;
-        ENGINE.record(state, exp, true, t);
+        ENGINE.record(trk(L.mode), exp, true, t);
         pk.n++;
         pk.ok++;
         if (t != null) {
           pk.tSum += t;
           pk.tN++;
           const pair = (L.prevCh || '') + exp;
-          if (L.prevCh && L.prevCh !== '\n' && (CONTENT.symbolsIn(pair).size)) ENGINE.recordPair(state, pair, t);
+          if (!isWords(L.mode) && L.prevCh && L.prevCh !== '\n' && (CONTENT.symbolsIn(pair).size)) ENGINE.recordPair(state, pair, t);
         }
       }
       L.prevCh = exp;
@@ -553,7 +764,7 @@
     } else {
       if (!L.errorsAt.has(L.pos)) {
         L.errorsAt.add(L.pos);
-        if (L.mode !== 'warmup') ENGINE.record(state, exp, false, null, ch);
+        if (recordable(L, exp)) ENGINE.record(trk(L.mode), exp, false, null, ch);
         pk.n++;
       }
       L.prevCh = null; // timing after a mistake is not a clean transition
@@ -621,18 +832,36 @@
       shifted: L.shifted,
       dur: Math.round(dur),
     };
-    state.lessons.push(rec);
+    const S = trk(L.mode);
+    S.lessons.push(rec);
     if (L.mode === 'mycode') state.mycode.pos = state.mycode.next || 0;
-    const events = ENGINE.afterLesson(state, L.perKey, L.mode, L.focus);
-    persist();
+    // Words lessons use the engine's 'adaptive' bookkeeping (rotation, stall counter),
+    // except sentence lessons, which drill no single letter.
+    const W = isWords(L.mode);
+    const events = ENGINE.afterLesson(S, L.perKey, W ? (L.sentences ? 'sentences' : 'adaptive') : L.mode, L.focus);
+    if (W) persistWords();
+    else persist();
     SOUND.complete();
     if (events.length) {
       if (events.some((x) => /unlocked|Mastered|passed/.test(x))) SOUND.unlock();
-      toast(events.join(' · '));
+      toast(compactEvents(events).join(' · '));
     }
     renderMetrics(rec);
     renderStrip();
     newLesson();
+  }
+
+  // Several keys clearing the bar on the same lesson become one message.
+  function compactEvents(events) {
+    const solid = [];
+    const rest = events.filter((x) => {
+      const m = /^(.+) looks solid today: confirm it on another day to master it$/.exec(x);
+      if (m) solid.push(m[1]);
+      return !m;
+    });
+    if (solid.length > 1) rest.unshift(solid.join(' ') + ' look solid today: confirm them on another day to master them');
+    else if (solid.length) rest.unshift(solid[0] + ' looks solid today: confirm it on another day to master it');
+    return rest;
   }
 
   // ---------- events ----------
@@ -665,12 +894,24 @@
   });
 
   function setMode(mode) {
-    state.mode = mode;
-    persist();
-    document.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
+    if (mode === 'words') {
+      // Device-local switch: no save, so the symbol progress is untouched.
+      wordsOn = true;
+      STORE.setWordsActive(true);
+    } else {
+      wordsOn = false;
+      STORE.setWordsActive(false);
+      state.mode = mode;
+      persist();
+    }
+    document.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === curMode()));
     $('mycodePanel').dataset.open = '0';
-    showView('practice');
-    newLesson();
+    guardWords(() => {
+      showView('practice');
+      renderStrip();
+      renderMetrics();
+      newLesson();
+    });
   }
   document.querySelectorAll('.modes button').forEach((b) =>
     b.addEventListener('click', () => { b.blur(); setMode(b.dataset.mode); })
@@ -685,7 +926,7 @@
     newLesson();
   });
   $('focusLine').addEventListener('click', () => {
-    if (state.mode !== 'mycode') return;
+    if (curMode() !== 'mycode') return;
     $('mycodePanel').dataset.open = '1';
     $('mycodeText').value = state.mycode.text || '';
     $('mycodePanel').hidden = false;
@@ -696,7 +937,13 @@
     $('practice').hidden = v !== 'practice';
     $('statsView').hidden = v !== 'stats';
     $('statsBtn').textContent = v === 'stats' ? 'Practice' : 'Stats';
-    if (v === 'stats') renderStats();
+    if (v === 'stats') {
+      // Stats open on the current mode's stats; the other is one click away.
+      statsFor = isWords() ? 'words' : 'symbols';
+      $('statsSym').classList.toggle('on', statsFor === 'symbols');
+      $('statsWords').classList.toggle('on', statsFor === 'words');
+      renderStats();
+    }
   }
   $('statsBtn').addEventListener('click', () => {
     $('statsBtn').blur();
@@ -707,7 +954,20 @@
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  let statsFor = 'symbols';
+  function setStatsFor(which) {
+    statsFor = which;
+    $('statsSym').classList.toggle('on', which === 'symbols');
+    $('statsWords').classList.toggle('on', which === 'words');
+    renderStats();
+  }
+  $('statsSym').addEventListener('click', () => setStatsFor('symbols'));
+  $('statsWords').addEventListener('click', () => setStatsFor('words'));
+
   function renderStats() {
+    if (statsFor === 'words') return renderWordsStats();
+    $('keysTitle').textContent = 'Symbols';
+    $('letterBlock').hidden = false;
     CHART.draw($('chart'), state.lessons);
     const all = state.lessons;
     const totalMin = all.reduce((a, x) => a + (x.dur || 0), 0) / 60000;
@@ -765,7 +1025,7 @@
   }
 
   $('copyReport').addEventListener('click', async () => {
-    const md = REPORT.build(state);
+    const md = combinedReport();
     try {
       await navigator.clipboard.writeText(md);
       toast('Report copied');
@@ -773,15 +1033,67 @@
       STORE.download('typing-report.md', md, 'text/markdown');
     }
   });
-  $('downloadReport').addEventListener('click', () => STORE.download('typing-report.md', REPORT.build(state), 'text/markdown'));
-  window.addEventListener('resize', () => { if (view === 'stats') CHART.draw($('chart'), state.lessons); });
+  $('downloadReport').addEventListener('click', () => STORE.download('typing-report.md', combinedReport(), 'text/markdown'));
+  window.addEventListener('resize', () => { if (view === 'stats') CHART.draw($('chart'), (statsFor === 'words' ? wordsState() : state).lessons); });
+
+  // Words mode stats: same layout, its own data only.
+  function renderWordsStats() {
+    const W = wordsState();
+    $('keysTitle').textContent = 'Letters (Words mode)';
+    $('letterBlock').hidden = true;
+    CHART.draw($('chart'), W.lessons);
+    const all = W.lessons;
+    const totalMin = all.reduce((a, x) => a + (x.dur || 0), 0) / 60000;
+    const best = all.length ? Math.round(Math.max(...all.map((x) => x.wpm))) : '–';
+    const recent = all.slice(-20);
+    const recentAcc = recent.length ? recent.reduce((a, x) => a + x.acc, 0) / recent.length : null;
+    $('summary').innerHTML =
+      '<div><b>' + all.length + '</b>lessons</div>' +
+      '<div><b>' + Math.round(totalMin) + 'm</b>total practice</div>' +
+      '<div><b>' + pct(recentAcc) + '</b>accuracy, last 20</div>' +
+      '<div><b>' + best + '</b>best words WPM</div>' +
+      '<div><b>' + W.unlocked + '/' + WORDS.ORDER.length + '</b>letters unlocked</div>' +
+      '<div class="wide"><b>Next letter</b>' + escHtml(CTT.unlockText(ENGINE.unlockStatus(W), WORDS.ORDER[W.unlocked], 'letter', 'Words lesson')) + '</div>';
+    const now = Date.now();
+    $('keyRows').innerHTML = WORDS.ORDER.map((ch) => keyRow(W, ch, now)).join('');
+    $('keyRows').querySelectorAll('td.k').forEach((td, i) => (td.textContent = WORDS.ORDER[i]));
+    fillList('mixList', ENGINE.allConfusions(W, 8).map((c) => showChar(c.expected) + '  →  ' + showChar(c.typed) + '   ×' + c.count), 'No mix-ups recorded yet.');
+    fillList('pairList', [], 'Not tracked in Words mode.');
+    $('fileInfo').textContent = 'Words mode progress is kept separately from the symbol stats.';
+  }
+
+  function keyRow(S, ch, now) {
+    const st = ENGINE.stats(S, ch, now);
+    const review = st.level
+      ? 'L' + st.level + (st.due ? (st.due <= now ? ', due' : ', ' + Math.ceil((st.due - now) / 86400000) + 'd') : '')
+      : st.passDays ? st.passDays + '/' + ENGINE.CONST.PASS_DAYS + ' days' : '–';
+    return (
+      '<tr><td class="k"></td><td>' + st.status + '</td><td>' + st.n + '</td><td>' + pct(st.acc) +
+      '</td><td>' + (st.wpm ? Math.round(st.wpm) + ' wpm' : '–') +
+      '</td><td><div class="confbar"><i style="width:' + Math.round(st.conf * 100) + '%;background:' + confColor(st.conf) +
+      '"></i></div></td><td>' + review + '</td><td>' + LAYOUT.describe(ch) + '</td></tr>'
+    );
+  }
+
+  function fillList(id, items, empty) {
+    const el = $(id);
+    el.innerHTML = '';
+    if (!items.length) { el.innerHTML = '<li class="muted">' + empty + '</li>'; return; }
+    items.forEach((t) => { const li = document.createElement('li'); li.textContent = t; el.appendChild(li); });
+  }
 
   // ---------- settings ----------
   const dlg = $('settings');
   $('settingsBtn').addEventListener('click', () => {
     const s = state.settings;
     $('sTarget').value = s.targetWpm;
-    $('sLen').value = s.lessonLen;
+    $('sWordsTarget').value = words.prefs.targetWpm;
+    $('sLen').value = wordsOn ? words.prefs.lessonLen : s.lessonLen;
+    // These act on the mode on screen.
+    $('sLenLabel').textContent = wordsOn ? 'Words lesson length (characters)' : 'Adaptive lesson length (characters)';
+    $('sUnlock').textContent = wordsOn ? 'Unlock next letter (Words)' : 'Unlock next symbol';
+    $('sReset').textContent = wordsOn ? 'Reset Words progress' : 'Reset progress';
+    renderWordsSync();
     $('sStop').checked = s.stopOnError;
     $('sSound').checked = s.sound;
     $('sVol').value = s.volume;
@@ -794,9 +1106,14 @@
   });
   function readSettings() {
     const s = state.settings;
+    const before = JSON.stringify(s);
     const clamp = (v, lo, hi, d) => (isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
     s.targetWpm = clamp(parseFloat($('sTarget').value), 10, 120, 30);
-    s.lessonLen = clamp(parseFloat($('sLen').value), 30, 200, 70);
+    const wp = words.prefs;
+    const wBefore = JSON.stringify(wp);
+    wp.targetWpm = clamp(parseFloat($('sWordsTarget').value), 10, 150, 35);
+    if (wordsOn) wp.lessonLen = clamp(parseFloat($('sLen').value), 30, 200, 70);
+    else s.lessonLen = clamp(parseFloat($('sLen').value), 30, 200, 70);
     s.stopOnError = $('sStop').checked;
     s.sound = $('sSound').checked;
     s.volume = parseFloat($('sVol').value);
@@ -804,34 +1121,60 @@
     s.highlightNext = $('sNext').checked;
     s.fingerColors = $('sFingers').checked;
     s.focusStyle = $('sFocus').value === 'mixed' ? 'mixed' : 'single';
-    persist();
+    if (JSON.stringify(wp) !== wBefore) persistWords();
+    // In symbol modes, as before; in Words mode, only when a shared setting changed.
+    if (!wordsOn || JSON.stringify(s) !== before) persist();
     applySettings();
     renderStrip();
   }
-  dlg.querySelectorAll('input, select').forEach((i) => i.addEventListener('change', readSettings));
+  dlg.querySelectorAll('input:not([type=file]), select').forEach((i) => i.addEventListener('change', readSettings));
   dlg.addEventListener('close', () => { readSettings(); renderFocus(); });
   $('sUnlock').addEventListener('click', () => {
-    const ch = ENGINE.forceUnlock(state);
-    persist();
+    const ch = ENGINE.forceUnlock(trk());
+    if (isWords()) persistWords();
+    else persist();
     renderStrip();
-    toast(ch ? 'Unlocked: ' + ch : 'All symbols are unlocked');
+    toast(ch ? 'Unlocked: ' + ch : isWords() ? 'All letters are unlocked' : 'All symbols are unlocked');
   });
   $('sExport').addEventListener('click', () => STORE.exportJson(state));
+  $('sExportWords').addEventListener('click', () => STORE.exportWords(words));
   $('sImport').addEventListener('click', () => $('sImportFile').click());
   $('sImportFile').addEventListener('change', async (e) => {
     const f = e.target.files[0];
     if (!f) return;
     try {
-      state = STORE.merge(JSON.parse(await f.text()));
-      persist();
-      boot();
-      toast('Progress imported');
+      const obj = JSON.parse(await f.text());
+      if (obj && obj.kind === 'ctt-words') {
+        // A Words export: only the Words progress changes.
+        SYNC.cancelWords();
+        words = STORE.mergeWords(obj);
+        persistWords();
+        boot();
+        toast('Words progress imported');
+      } else {
+        const skipped = obj && obj.words && Array.isArray(obj.words.lessons) && obj.words.lessons.length > 0 && words.lessons.length > 0;
+        state = STORE.merge(obj);
+        persist();
+        boot();
+        toast(skipped ? 'Progress imported. Words progress in this file was not imported; use a Words export' : 'Progress imported');
+      }
     } catch (err) {
       toast('Could not read that file');
     }
     e.target.value = '';
   });
   $('sReset').addEventListener('click', () => {
+    if (wordsOn) {
+      if (!confirm('Reset Words mode progress? The symbol progress is not affected. Export Words first if you want a backup.')) return;
+      const prefs = words.prefs;
+      SYNC.cancelWords();
+      words = STORE.wordsDefaults();
+      words.prefs = prefs;
+      persistWords();
+      boot();
+      toast('Words progress reset');
+      return;
+    }
     if (!confirm('Reset all progress and stats? Export first if you want a backup.')) return;
     const settings = state.settings;
     state = STORE.defaults();
@@ -843,12 +1186,15 @@
 
   // ---------- boot ----------
   function boot() {
+    seedWordsFromLegacy();
     buildKeymap();
     applySettings();
-    document.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === state.mode));
-    renderStrip();
-    renderMetrics();
-    newLesson();
+    guardWords(() => {
+      document.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === curMode()));
+      renderStrip();
+      renderMetrics();
+      newLesson();
+    });
     renderFileBtn();
   }
   boot();
@@ -861,6 +1207,7 @@
   (async () => {
     // Synced copy first, so a newer gist is not overwritten by the local save below.
     if (SYNC.enabled()) await pullGist();
+    if (SYNC.enabled()) pullWordsGist(); // Words file: separate request, not awaited
     // Preferred: auto-save through server.py (start-trainer.bat). No clicks needed.
     const srv = await FILES.detectServer();
     if (srv) {
@@ -873,6 +1220,8 @@
       } else {
         persist();
       }
+      serverWords = 'words' in srv;
+      if (serverWords) wordsFromCopy(srv.words, () => FILES.serverSaveWords(words));
       renderFileBtn();
       return;
     }
@@ -880,6 +1229,9 @@
     const s = await FILES.restore();
     fileState = s;
     renderFileBtn();
-    if (s === 'granted') await syncFromFile();
+    if (s === 'granted') {
+      await syncFromFile();
+      await wordsFromFolder();
+    }
   })();
 })();

@@ -107,5 +107,42 @@
     return out.join('\n');
   }
 
-  CTT.REPORT = { build };
+  // Words mode section, kept out of the saved report (data/report.md, gist): only
+  // Copy report and Download report append it, and only once there is a Words lesson.
+  // W: the Words save; settings: main settings (read only).
+  function buildWords(W, settings, now) {
+    try {
+      return buildWordsUnsafe(W, settings, now || Date.now());
+    } catch (e) {
+      return '\n## Words mode (separate from the symbol stats)\n\nWords section unavailable.\n';
+    }
+  }
+
+  function buildWordsUnsafe(W, settings, now) {
+    const L = (W && Array.isArray(W.lessons) ? W.lessons : []).filter((x) => x && Number.isFinite(x.ts));
+    if (!L.length || !CTT.WORDS) return '';
+    const order = CTT.WORDS.ORDER;
+    const target = (W.prefs && W.prefs.targetWpm) || 35;
+    // Read-only view: the engine sees Words keys and the Words target speed.
+    const view = Object.create(W);
+    Object.defineProperty(view, 'order', { value: order });
+    Object.defineProperty(view, 'settings', { value: { ...settings, targetWpm: target } });
+    const out = ['## Words mode (separate from the symbol stats)', ''];
+    const in7 = L.filter((x) => now - x.ts < 7 * DAY);
+    const avg = (xs, k) => (xs.length ? xs.reduce((a, x) => a + x[k], 0) / xs.length : null);
+    out.push('- Lessons: ' + L.length + ' total, ' + in7.length + ' in the last 7 days; ' + num(L.reduce((a, x) => a + (x.dur || 0), 0) / 60000, 1) + ' min total');
+    out.push('- Last 7 days: ' + num(avg(in7, 'wpm'), 1) + ' WPM, ' + pct(avg(in7, 'acc')) + ' accuracy');
+    out.push('- Letters unlocked: ' + W.unlocked + '/' + order.length + ' (target ' + target + ' WPM per letter)');
+    out.push('- Next unlock: ' + CTT.unlockText(ENGINE.unlockStatus(view, now), order[W.unlocked], 'letter', 'Words lesson'));
+    const weak = order.slice(0, W.unlocked)
+      .map((ch) => ({ ch, st: ENGINE.stats(view, ch, now) }))
+      .filter((x) => x.st.n >= 5)
+      .sort((a, b) => a.st.conf - b.st.conf)
+      .slice(0, 5);
+    if (weak.length) out.push('- Weakest letters: ' + weak.map((x) => '`' + x.ch + '` ' + pct(x.st.acc) + ' / ' + num(x.st.wpm) + ' WPM').join(', '));
+    out.push('');
+    return '\n' + out.join('\n');
+  }
+
+  CTT.REPORT = { build, buildWords };
 })();

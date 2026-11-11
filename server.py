@@ -2,7 +2,8 @@
 """Local server for the Code Typing Trainer.
 
 Serves the page on http://127.0.0.1:8765/ and saves progress automatically to
-data/progress.json and data/report.md after every lesson. Only this computer
+data/progress.json and data/report.md after every lesson (Words mode:
+data/words.json). Only this computer
 can reach it. If it is already running, it just opens the browser.
 
 Usage: double-click start-trainer.bat, or run `python server.py`.
@@ -57,7 +58,13 @@ class Handler(SimpleHTTPRequestHandler):
                     progress = json.load(f)
             except (OSError, ValueError):
                 progress = None
-            return self._json(200, {"ok": True, "progress": progress})
+            # Words mode has its own file; pages that do not know it ignore the key.
+            try:
+                with open(os.path.join(DATA, "words.json"), encoding="utf-8") as f:
+                    words = json.load(f)
+            except (OSError, ValueError):
+                words = None
+            return self._json(200, {"ok": True, "progress": progress, "words": words})
         return super().do_GET()
 
     def do_POST(self):
@@ -78,6 +85,8 @@ class Handler(SimpleHTTPRequestHandler):
             write_atomic(os.path.join(DATA, "progress.json"), json.dumps(body["progress"], indent=1))
         if isinstance(body.get("report"), str):
             write_atomic(os.path.join(DATA, "report.md"), body["report"])
+        if isinstance(body.get("words"), dict):
+            write_atomic(os.path.join(DATA, "words.json"), json.dumps(body["words"], indent=1))
         return self._json(200, {"ok": True})
 
 

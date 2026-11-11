@@ -10,6 +10,101 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-11: Words mode (side feature, separate save)
+
+Commit: see `git log --grep "Words mode"`.
+
+### Why
+
+A keybr-style letter trainer with everyday and AI/ML words, for people who
+want plain typing instead of code. It is a side feature: the symbol modes
+(Adaptive, Lines, My code, Warmup) stay the main tool and must not change.
+
+### Design: a separate save (sidecar)
+
+A first version kept Words progress inside the main save (`state.words`).
+It was tested but never released, because it still shared the main save:
+a Words lesson bumped the main `savedAt`, so typing Words on device B could
+make B's older symbol progress win the sync over device A, and Words data was
+parsed on every main load. The released design keeps Words fully apart:
+
+| Where | Main (unchanged) | Words |
+|---|---|---|
+| Browser | `ctt.v1` (+ `.prev`) | `ctt.words.v1` (+ `.prev`, `.unreadable`) |
+| On-screen mode | `state.mode` (symbol modes only) | `ctt.words.active`, this device only, never synced |
+| Gist | `code-typing-trainer-progress.json`, `-report.md` | `code-typing-trainer-words.json`; its PATCH lists only this file |
+| Server | `data/progress.json`, `data/report.md` | `data/words.json` (git-ignored), only if the server knows it |
+| Folder mode | same files | `data/words.json` |
+| Export | Export progress (same file as before) | Export Words progress; Import detects either |
+| Report | saved report unchanged | Words section only in Copy/Download report, once there is a Words lesson |
+
+- The main save, load, sync, server and export code is the same as before
+  Words (one added line in `merge`: `stripLegacy`, which returns the input
+  unchanged for normal saves). Words code never calls them.
+- Words sync (`js/sync.js`, `pullWords`/`pushWords`): newest `savedAt` wins
+  for the Words file only, with its own status line in Settings; it waits
+  while a main upload is queued or in flight; adopting a newer copy cancels
+  older queued uploads.
+- `js/store.js` `mergeWords` cleans every field the engine reads, and
+  `guardWords` in `js/app.js` switches back to the symbols if Words data still
+  cannot be shown, so bad Words data can never stop the app from starting.
+- Settings: own target speed (10–150, default 35); Lesson length, Unlock and
+  Reset act on the mode on screen.
+- Engine: `js/engine.js` reads the key order from `state.order || TRAIN`
+  (`ord()`), so it runs on the Words save; `order` and `settings` are
+  attached as non-enumerable (never saved). Only a-z is recorded in Words, no
+  pair timings, no weak-letter mixing. Sentence lessons (all 26 letters, about
+  half the lessons) run the engine with mode `'sentences'`, so they do not
+  move the focus rotation or the unlock counter.
+- Content (`js/words.js`): letter order `etaoinsrhldcumfpgwybvkxjqz`, 10 to
+  start (`ORDER`, `START`), about 700 common + ML words, 100 original ML
+  sentences, about half the words contain the focus letter (0.5 / 0.8 split
+  in `text()`).
+- Also changed for both modes (display only): several "looks solid today"
+  messages from one lesson are merged into one; the header shows "–" for a
+  mode with no lessons yet.
+- Migration: Words data left inside a main save by the unreleased first
+  version is removed from main on load and copied once into an empty Words
+  save, with `savedAt = 1` so any real synced Words copy wins.
+
+### Process and tests (tests/words-mode/)
+
+Design (`sidecar-design.md`) and test plan (`sidecar-testplan.md`) by a
+planning agent, then implementation, then a full test run by a testing agent
+and an independent code review in parallel; findings fixed and the full suite
+re-run. Results with evidence: `sidecar-results.md`.
+
+- Main byte-identity against the previous version: browser save, gist PATCH
+  bodies, server POST bodies, export and saved report are identical for the
+  same symbol lessons, with and without Words activity in between.
+- Words gist PATCH bodies contain only the Words file; conflict matrix (local
+  newer, remote newer, missing, corrupted, newer version, token revoked,
+  offline, both uploads at once); connect with Words-only progress.
+- The previous version opened after this one was used: opens a symbol mode,
+  main intact.
+- Corrupted Words storage, storage full, reset, import, export, migration,
+  old page with new server and new page with old server.
+- Review fixes: corrupted Words data could stop startup (now cleaned and
+  guarded); Words upload could overlap a queued main upload; a failed older
+  Words upload was retried after a newer copy was adopted; importing a Words
+  file re-saved the main progress (the Settings change listener also caught
+  the hidden import input; now `input:not([type=file])`).
+
+### Rollback / tweak
+
+- Remove the feature: `git revert` the commit. Main saves written by this
+  version are in the previous format, so the old code reads them as its own;
+  the Words keys and files are simply ignored and kept.
+- Optional cleanup after a rollback: remove `ctt.words.*` from the browser
+  storage, the Words file from the gist, `data/words.json`.
+- Hide without reverting: remove the Words button in `index.html`; nothing
+  in the main mode reads the Words save.
+- Starting letters: `START` (js/words.js) and `unlocked: 10` in
+  `wordsDefaults` / `mergeWords` (js/store.js).
+- Words target speed: Settings, or the default in `wordsDefaults`.
+
+---
+
 ## 2026-11-11: Mastery by confidence bound, two-day rule, natural unlocking
 
 Commit: see `git log --grep "confidence-bound mastery"`.
