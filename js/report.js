@@ -29,14 +29,16 @@
 
     out.push('# Code Typing Trainer report', '');
     out.push('Generated: ' + fmtDate(now));
-    out.push('Data window: key samples older than ' + C.MAX_AGE_D + ' days are dropped; weight halves every ' + C.HALF_LIFE_D + ' days.');
-    out.push('Settings: target ' + state.settings.targetWpm + ' WPM per key, accuracy target ' + C.ACC_TARGET * 100 + '%, stop on error ' + (state.settings.stopOnError ? 'on' : 'off') + '.');
+    out.push('Data window: last ' + C.HIST + ' attempts per key, dropped after ' + C.MAX_AGE_D + ' days; weight halves every ' + C.HALF_LIFE_D + ' days and after ' + C.ATTEMPT_HALF + ' newer attempts.');
+    out.push('Mastery: 90% sure accuracy is at least ' + Math.round(C.MASTER_BAR * 100) + '% (and target speed), on ' + C.PASS_DAYS + ' different days with ' + Math.round(C.DAY_ACC * 100) + '%+ that day. Demoted when 80% sure accuracy is below ' + Math.round(C.DEMOTE_BAR * 100) + '%.');
+    out.push('Settings: target ' + state.settings.targetWpm + ' WPM per key, stop on error ' + (state.settings.stopOnError ? 'on' : 'off') + '.');
     out.push('');
 
     out.push('## Summary', '');
     out.push('- Lessons: ' + L.length + ' total, ' + in7.length + ' in the last 7 days');
     out.push('- Practice time: ' + num(mins(L.filter((x) => new Date(x.ts).toDateString() === today)), 1) + ' min today, ' + num(mins(in7), 1) + ' min last 7 days, ' + num(mins(L), 1) + ' min total');
     out.push('- Symbols unlocked: ' + state.unlocked + '/' + CONTENT.TRAIN.length);
+    out.push('- Next unlock: ' + CTT.unlockText(ENGINE.unlockStatus(state, now), CONTENT.TRAIN[state.unlocked]));
     const sh = in7.reduce((a, x) => a + (x.sameHand || 0), 0);
     const shifted = in7.reduce((a, x) => a + (x.shifted || 0), 0);
     out.push('- Same-hand Shift (7 days): ' + sh + (shifted ? ' of ' + shifted + ' shifted characters (' + pct(sh / shifted) + ')' : ''));
@@ -61,7 +63,7 @@
       const st = ENGINE.stats(state, ch, now);
       if (st.status === 'locked' && !st.n) continue;
       const mix = ENGINE.topConfusions(state, ch, 1)[0];
-      const due = st.due ? (st.due <= now ? 'due now' : 'in ' + Math.ceil((st.due - now) / DAY) + 'd') : '–';
+      const due = st.due ? (st.due <= now ? 'due now' : 'in ' + Math.ceil((st.due - now) / DAY) + 'd') : st.passDays ? st.passDays + '/' + C.PASS_DAYS + ' days passed' : '–';
       out.push('| `' + show(ch) + '` | ' + st.status + ' | ' + st.n + ' | ' + num(st.eff, 1) + ' | ' + pct(st.acc) + ' | ' + num(st.wpm) + ' | ' + st.level + ' | ' + due + ' | ' + (mix ? '`' + show(mix.typed) + '` ×' + mix.count : '–') + ' | ' + LAYOUT.describe(ch) + ' |');
     }
     out.push('');

@@ -703,6 +703,10 @@
     showView(view === 'stats' ? 'practice' : 'stats');
   });
 
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   function renderStats() {
     CHART.draw($('chart'), state.lessons);
     const all = state.lessons;
@@ -719,11 +723,14 @@
       '<div><b>' + pct(recentAcc) + '</b>accuracy, last 20</div>' +
       '<div><b>' + best('adaptive') + '</b>best adaptive WPM</div>' +
       '<div><b>' + best('lines') + '</b>best lines WPM</div>' +
-      '<div><b>' + state.unlocked + '/' + CONTENT.TRAIN.length + '</b>symbols unlocked</div>';
+      '<div><b>' + state.unlocked + '/' + CONTENT.TRAIN.length + '</b>symbols unlocked</div>' +
+      '<div class="wide"><b>Next symbol</b>' + escHtml(CTT.unlockText(ENGINE.unlockStatus(state), CONTENT.TRAIN[state.unlocked])) + '</div>';
     const now = Date.now();
     const rows = CONTENT.TRAIN.map((ch) => {
       const st = ENGINE.stats(state, ch, now);
-      const review = st.level ? 'L' + st.level + (st.due ? (st.due <= now ? ', due' : ', ' + Math.ceil((st.due - now) / 86400000) + 'd') : '') : '–';
+      const review = st.level
+        ? 'L' + st.level + (st.due ? (st.due <= now ? ', due' : ', ' + Math.ceil((st.due - now) / 86400000) + 'd') : '')
+        : st.passDays ? st.passDays + '/' + ENGINE.CONST.PASS_DAYS + ' days' : '–';
       return (
         '<tr><td class="k"></td><td>' + st.status + '</td><td>' + st.n + '</td><td>' + pct(st.acc) +
         '</td><td>' + (st.wpm ? Math.round(st.wpm) + ' wpm' : '–') +

@@ -20,7 +20,7 @@ works, without automatic saving.
 
 - **Adaptive**: drills built from Python tokens (`nums[i]`, `__init__`,
   `d.get(k, 0)`). It starts with `( ) [ ] _ :` and unlocks one new symbol
-  once every unlocked symbol has been mastered.
+  as described under "How the model avoids getting stuck".
   - **Learn phase (one key at a time, keybr-style)**: a new or weak focus key
     stays the focus until it reaches 92% accuracy and 70% of the target
     speed. Lessons are mostly that key: short drills (`i(`, `(dp`, `x(j`)
@@ -41,14 +41,22 @@ works, without automatic saving.
 
 ## How the model avoids getting stuck
 
-- **Time decay**: each key keeps its last 60 attempts; an attempt's weight
-  halves every 10 days and drops out after 21 days, so old green keys fade
-  and come back into practice.
-- **Spaced review**: a key that reaches 96% accuracy and the target speed is
-  mastered and scheduled for review after 1, 3, 7, 14, then 30 days. Review
-  attempts accumulate across lessons (6 needed); passing extends the gap,
-  missing sends the key back to learning. A mastered key that drops below 90%
-  is demoted.
+- **Memory**: each key keeps its last 150 attempts. An attempt counts half
+  after 100 newer attempts, its weight also halves every 10 days, and it drops
+  out after 21 days, so old green keys fade and come back into practice.
+- **Mastery by confidence**: a key is mastered when the trainer is 90% sure
+  its accuracy is at least 93% (a Wilson lower bound, so more attempts and
+  higher accuracy both help), it is at target speed, and that happened on 2
+  different days, each with 95%+ accuracy that day. One cram day cannot
+  master a key.
+- **Spaced review**: mastered keys come back after 1, 3, 7, 14, then 30
+  days. A review passes or fails by the same kind of bound (decided at 40
+  attempts at the latest). A mastered key is demoted only when the trainer is
+  80% sure it dropped below 90%, so one bad lesson does not demote it.
+- **Unlocking**: the next symbol unlocks when every unlocked key has reached
+  92% accuracy and 70% of target speed, or after 10 adaptive lessons without
+  an unlock if no key is below 70% and at most 3 keys are still weak. Weak
+  keys keep the focus. Stats shows what the next unlock is waiting for.
 - **Rotation**: if the focus key has not improved after 5 lessons, it rests
   for 3 lessons and the next-weakest key takes over.
 - **Mix-ups**: wrong keys are recorded (for example `-` typed for `_`), and
@@ -123,6 +131,8 @@ js/files.js     auto-save via server.py, or folder access fallback
 js/report.js    markdown metrics report
 js/sync.js      optional GitHub Gist sync across devices
 js/app.js       typing loop, rendering, settings, stats view
+sim/            Python simulations of the mastery and unlock rules
+IMPROVEMENTS.md log of behavior changes, with old values and rollback notes
 ```
 
 Scripts are plain (non-module) so the page also works from `file://`.

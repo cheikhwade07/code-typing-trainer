@@ -22,7 +22,8 @@
       },
       mode: 'adaptive',
       unlocked: 6,
-      keys: {}, // ch -> { hist: [{ok, t, ts}], level, due }
+      sinceUnlock: 0, // adaptive lessons since the last unlock
+      keys: {}, // ch -> { hist: [{ok, t, ts}], level, due, passDays: [{day, ts}], good }
       confusions: {}, // expected ch -> [{c: typed, ts}]
       pairs: {}, // "ab" -> [{t, ts}]
       cooldown: {}, // ch -> lessons left resting
