@@ -356,7 +356,7 @@
     const nm = (a) => a.join(' ');
     if (u.low.length) return next + ' waits until ' + nm(u.low) + ' ' + (u.low.length > 1 ? 'are' : 'is') + ' back above ' + Math.round(STALL_FLOOR * 100) + '%';
     if (u.notGood.length > MAX_NOT_GOOD) return next + ' waits until at most ' + MAX_NOT_GOOD + ' keys are still weak (now: ' + nm(u.notGood) + ')';
-    return next + ' in ' + u.left + ' adaptive lesson' + (u.left === 1 ? '' : 's') + ', or sooner once ' + nm(u.notGood) + ' reach ' + Math.round(LEARN_ACC * 100) + '%';
+    return next + ' in ' + u.left + ' adaptive lesson' + (u.left === 1 ? '' : 's') + ', or sooner once ' + nm(u.notGood) + (u.notGood.length === 1 ? ' reaches ' : ' reach ') + Math.round(LEARN_ACC * 100) + '%';
   };
 
   CTT.ENGINE = {
