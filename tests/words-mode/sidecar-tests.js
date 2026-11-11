@@ -31,24 +31,39 @@
     if (T.onMode() !== (m || 'adaptive')) { T.mode(m || 'adaptive'); await wait(20); }
     return T.typeLesson(o || {});
   }
+  // Words-only buttons: the tabbed dialog has its own; HEAD (777f92f) used the shared ones in Words mode.
+  const wBtn = (id) => document.getElementById(id + 'Words') || document.getElementById(id);
+  const PREFS0 = { caps: 0, nums: false, punct: false };
   const remoteWords = async (ctx) => { const g = await T.gist(ctx.id); return g.files[WFILE]; };
   const wordsRes = (W) => !!W && W.kind === 'ctt-words' && Number.isInteger(W.unlocked) && W.unlocked >= 10 && W.unlocked <= 26 &&
     W.prefs.targetWpm >= 10 && W.prefs.targetWpm <= 150 && W.prefs.lessonLen >= 30 && W.prefs.lessonLen <= 200;
 
   // ---------- MI: main byte identity script (runs on HEAD and new) ----------
   T.SCRIPT_MAIN = async function (o) {
-    const out = { variant: o.variant, build: T.isNew ? 'new' : 'head' };
+    const out = { variant: o.variant, build: T.build };
     T.freeze(T0);
     await T.load(T.fsyn());
     if (o.gist) { await T.connect(); await wait(50); await SYNC().flush(); }
     const modes = ['adaptive', 'adaptive', 'lines', 'adaptive', 'mycode', 'adaptive', 'adaptive', 'lines'];
     for (let i = 1; i <= 8; i++) {
-      if (o.variant === 'B' && i === 4) {
+      if ((o.variant === 'B' || o.variant === 'C') && i === 4) {
         T.freeze(T0 + 3 * 60000 + 1);
         T.mode('words'); await wait(20);
         const snap = { v1: T.raw('ctt.v1'), prev: T.raw('ctt.v1.prev'), nreq: TP.reqs.length, nsrv: TP.srv.length, nfw: (TP.fwrites || []).length };
+        if (o.variant === 'C') {
+          // C = B with all three Words extras turned on in the Words tab (tabbed builds only).
+          await T.openSettings();
+          const $ = (id) => document.getElementById(id);
+          $('sWordsCaps').value = '2'; $('sWordsCaps').dispatchEvent(new Event('change'));
+          $('sWordsNums').checked = true; $('sWordsNums').dispatchEvent(new Event('change'));
+          $('sWordsPunct').checked = true; $('sWordsPunct').dispatchEvent(new Event('change'));
+          await T.closeSettings();
+          out.extrasPrefs = T.sw().prefs;
+          out.extrasTexts = [];
+        }
         for (let k = 0; k < 3; k++) {
           T.seedRandom(300 + k); T.esc();
+          if (out.extrasTexts) out.extrasTexts.push(T.text());
           T.typeLesson({ errAt: T.err9 });
           T.tick(30000);
           if (o.gist) await SYNC().flushWords();
@@ -99,7 +114,7 @@
     T.thaw();
     return out;
   };
-  for (const [id, variant, gist] of [['MI-run-A', 'A', true], ['MI-run-B', 'B', true], ['MI-srv-A', 'A', false], ['MI-srv-B', 'B', false]]) {
+  for (const [id, variant, gist] of [['MI-run-A', 'A', true], ['MI-run-B', 'B', true], ['MI-run-C', 'C', true], ['MI-srv-A', 'A', false], ['MI-srv-B', 'B', false], ['MI-srv-C', 'C', false]]) {
     R[id] = [async (ctx) => {
       const out = await T.SCRIPT_MAIN({ variant, gist });
       await T.save('mi-' + id + '-' + out.build + '-' + location.port + '.json', out);
@@ -111,10 +126,12 @@
     const out = await T.SCRIPT_MAIN({ variant: 'A', gist: false });
     await T.save('mi-folder-A-' + out.build + '.json', out); ctx.allowErr = '.'; return ok(true, 'saved');
   }];
-  R['MI-folder-B'] = [async () => T.RELOAD({ folder: true }), async (ctx) => {
-    const out = await T.SCRIPT_MAIN({ variant: 'B', gist: false });
-    await T.save('mi-folder-B-' + out.build + '.json', out); ctx.allowErr = '.'; return ok(true, 'saved');
-  }];
+  for (const v of ['B', 'C']) {
+    R['MI-folder-' + v] = [async () => T.RELOAD({ folder: true }), async (ctx) => {
+      const out = await T.SCRIPT_MAIN({ variant: v, gist: false });
+      await T.save('mi-folder-' + v + '-' + out.build + '.json', out); ctx.allowErr = '.'; return ok(true, 'saved');
+    }];
+  }
 
   // ---------- WS ----------
   const F12 = () => T.FW(12, T0, { savedAt: T0 });
@@ -361,7 +378,7 @@
     const answers = T.isNew ? [a, b] : [a];
     R[id] = wcRemote(F10old(), T.FW(14, T0, { savedAt: T0 }), answers, T.fsyn(), mainRemote18()).concat([async (ctx) => {
       const r = { confirms: TP.confirms.map((x) => x.slice(0, 20)), mainLessons: T.st().lessons.length, unlocked: T.sw() && T.sw().unlocked };
-      await T.save('wc6-' + id + '-' + (T.isNew ? 'new' : 'head') + '.json', { v1: T.raw('ctt.v1'), r });
+      await T.save('wc6-' + id + '-' + T.build + '.json', { v1: T.raw('ctt.v1'), r });
       if (!T.isNew) return ok(true, r);
       const pass = TP.confirms.length === 2 && !/^Words/.test(TP.confirms[0]) && /^Words mode:/.test(TP.confirms[1]) &&
         r.mainLessons === (a ? 20 : 18) && r.unlocked === (b ? 14 : 10);
@@ -403,7 +420,7 @@
   }];
   R['XV-5'] = [async (ctx) => {
     const out = await window.XV();
-    await T.save('xv5-' + (T.isNew ? 'new' : 'head') + '.json', out);
+    await T.save('xv5-' + T.build + '.json', out);
     ctx.allowErr = '.';
     return ok(true, out.errors);
   }];
@@ -616,7 +633,7 @@
   R['EX-4'] = [async () => { if (T.isNew) localStorage.setItem('ctt.words.v1', JSON.stringify(F12())); return T.RELOAD({ freeze: T0 }); }, async () => {
     const w = T.raw('ctt.words.v1');
     await T.load(T.fsyn());
-    await T.save('ex4-' + (T.isNew ? 'new' : 'head') + '.json', { v1: T.raw('ctt.v1') });
+    await T.save('ex4-' + T.build + '.json', { v1: T.raw('ctt.v1') });
     return ok(T.raw('ctt.words.v1') === w, { sidecarSame: T.raw('ctt.words.v1') === w });
   }];
   R['EX-5'] = [seedBoth(), async () => {
@@ -631,22 +648,22 @@
   R['EX-6'] = [seedBoth({}, T.FW(12, T0, { savedAt: T0, prefs: { targetWpm: 44, lessonLen: 90 } })), async () => {
     T.mode('words'); await wait(20);
     const v1 = T.raw('ctt.v1');
-    await T.openSettings(); document.getElementById('sReset').click(); await wait(50); await T.closeSettings();
+    await T.openSettings(); wBtn('sReset').click(); await wait(50); await T.closeSettings();
     const W = T.sw();
     const r = { confirm: TP.confirms[0], lessons: W.lessons.length, unlocked: W.unlocked, prefs: W.prefs, v1Same: T.raw('ctt.v1') === v1 };
-    return ok(/Words/.test(r.confirm) && /not affected/.test(r.confirm) && r.lessons === 0 && T.eq(r.prefs, { targetWpm: 44, lessonLen: 90 }) && r.v1Same, r);
+    return ok(/Words/.test(r.confirm) && /not affected/.test(r.confirm) && r.lessons === 0 && T.eq(r.prefs, Object.assign({ targetWpm: 44, lessonLen: 90 }, T.isNewTabs ? PREFS0 : {})) && r.v1Same, r);
   }];
   R['EX-7'] = [async () => { localStorage.setItem('ctt.v1', JSON.stringify(T.fsyn())); if (T.isNew) localStorage.setItem('ctt.words.v1', JSON.stringify(F12())); return T.RELOAD({ freeze: T0 }); }, async () => {
     const w = T.raw('ctt.words.v1');
     await T.openSettings(); document.getElementById('sReset').click(); await wait(50); await T.closeSettings();
-    await T.save('ex7-' + (T.isNew ? 'new' : 'head') + '.json', { v1: T.raw('ctt.v1'), confirm: TP.confirms[0] });
-    return ok(T.raw('ctt.words.v1') === w && TP.confirms[0] === 'Reset all progress and stats? Export first if you want a backup.', { confirm: TP.confirms[0], sidecarSame: T.raw('ctt.words.v1') === w });
+    await T.save('ex7-' + T.build + '.json', { v1: T.raw('ctt.v1'), confirm: TP.confirms[0] });
+    return ok(T.raw('ctt.words.v1') === w && TP.confirms[0] === (T.isNewTabs ? 'Reset symbol progress and stats? Words mode progress is not affected. Export first if you want a backup.' : 'Reset all progress and stats? Export first if you want a backup.'), { confirm: TP.confirms[0], sidecarSame: T.raw('ctt.words.v1') === w });
   }];
   R['EX-8'] = [wsSetup(F12(), F12()), async () => {
     await wait(800);
     T.mode('words'); await wait(20);
     const n0 = TP.reqs.length;
-    await T.openSettings(); document.getElementById('sReset').click(); await wait(50); await T.closeSettings();
+    await T.openSettings(); wBtn('sReset').click(); await wait(50); await T.closeSettings();
     await wait(5000);
     const after = TP.reqs.slice(n0).filter((x) => x.method === 'PATCH').map((x) => x.tag + ':' + Object.keys(JSON.parse(x.body).files).join('+'));
     return ok(after.length === 1 && after[0] === 'words:' + WFILE, { patches: after });
@@ -708,7 +725,7 @@
       const m = C.STORE.merge(JSON.parse(JSON.stringify(fx)));
       out[n] = T.hash(JSON.stringify(m));
     }
-    await T.save('mg5-' + (T.isNew ? 'new' : 'head') + '.json', out);
+    await T.save('mg5-' + T.build + '.json', out);
     return ok(true, out);
   }];
   R['MG-6'] = [async () => {
@@ -717,8 +734,13 @@
     return T.RELOAD({ freeze: T0 });
   }, async () => {
     const shown = T.onMode();
-    document.getElementById('settingsBtn').click(); await wait(20); await T.closeSettings(); // first save
-    return ok(T.st().mode === 'adaptive' && shown === 'adaptive', { saved: T.st().mode, shown });
+    // First save: a symbol lesson. (Tabbed builds no longer re-save main when Settings closes
+    // without a main change, so the old open/close trigger writes nothing there.)
+    const before = T.raw('ctt.v1');
+    document.getElementById('settingsBtn').click(); await wait(20); await T.closeSettings();
+    const closeSaved = T.raw('ctt.v1') !== before;
+    if (!closeSaved) { T.freeze(T0 + 60000); T.typeLesson(); }
+    return ok(T.st().mode === 'adaptive' && shown === 'adaptive', { saved: T.st().mode, shown, closeSaved });
   }];
 
   // ---------- FX ----------
@@ -771,27 +793,33 @@
     stats();
     return ok(res.a.words && res.a.title === 'Letters (Words mode)' && Object.values(res.b).every(Boolean) && res.c, res);
   }];
+  // FX-5a / FX-5b: Words-only fields live on the Words tab (sWordsLen, sUnlockWords, sResetWords);
+  // sLen is always the main lesson length.
   R['FX-5a'] = [seedBoth({}, T.FW(12, T0, { prefs: { targetWpm: 41, lessonLen: 85 } })), async () => {
     T.mode('words'); await wait(20);
     await T.openSettings();
     const $ = (id) => document.getElementById(id);
-    const r = { lenLabel: $('sLenLabel').textContent, len: $('sLen').value, unlock: $('sUnlock').textContent, reset: $('sReset').textContent, target: !!$('sTarget'), wtarget: $('sWordsTarget').value,
-      labels: [...document.querySelectorAll('#settings label')].map((l) => l.textContent.trim()).filter((t) => /Target/.test(t)) };
+    const tab = (document.querySelector('#settings .seg button.on') || {}).dataset;
+    const r = { tab: tab && tab.tab, wlen: $('sWordsLen').value, len: $('sLen').value, unlock: $('sUnlockWords').textContent, reset: $('sResetWords').textContent,
+      symUnlock: $('sUnlock').textContent, symReset: $('sReset').textContent, target: !!$('sTarget'), wtarget: $('sWordsTarget').value, oldLabel: !!$('sLenLabel'),
+      labels: [...document.querySelectorAll('#settings label')].map((l) => l.textContent.trim()).filter((t) => /Target|length/.test(t)) };
     await T.closeSettings();
-    return ok(/^Words lesson length/.test(r.lenLabel) && r.len === '85' && r.unlock === 'Unlock next letter (Words)' && r.reset === 'Reset Words progress' && r.target && r.wtarget === '41', r);
+    return ok(r.tab === 'words' && r.wlen === '85' && r.len === String(T.st().settings.lessonLen) && r.unlock === 'Unlock next letter' && r.reset === 'Reset Words progress' &&
+      r.symUnlock === 'Unlock next symbol' && r.symReset === 'Reset symbol progress' && r.target && r.wtarget === '41' && !r.oldLabel, r);
   }];
   R['FX-5b'] = [seedBoth(), async () => {
     T.mode('words'); await wait(20);
     const v1 = T.raw('ctt.v1');
     await T.openSettings();
     const $ = (id) => document.getElementById(id);
-    $('sLen').value = '120'; $('sLen').dispatchEvent(new Event('change'));
+    $('sWordsLen').value = '120'; $('sWordsLen').dispatchEvent(new Event('change'));
     $('sWordsTarget').value = '50'; $('sWordsTarget').dispatchEvent(new Event('change'));
     await T.closeSettings();
     T.esc(); const len = T.text().length;
     const s = T.st();
     const r = { prefs: T.sw().prefs, v1Same: T.raw('ctt.v1') === v1, mainLen: s.settings.lessonLen, mainTarget: s.settings.targetWpm, nextLen: len };
-    return ok(T.eq(r.prefs, { targetWpm: 50, lessonLen: 120 }) && r.v1Same && r.mainLen === 70 && r.mainTarget === 30 && len >= 110 && len <= 140, r);
+    // extras are off here, so the length window of the plain word text applies
+    return ok(T.eq(r.prefs, Object.assign({ targetWpm: 50, lessonLen: 120 }, PREFS0)) && r.v1Same && r.mainLen === 70 && r.mainTarget === 30 && len >= 110 && len <= 140, r);
   }];
   R['FX-5c'] = [wsSetup(F12(), F12()), async () => {
     await wait(800);
@@ -819,7 +847,7 @@
   R['FX-5f'] = [seedBoth(), async () => {
     T.mode('words'); await wait(20);
     const v1 = T.raw('ctt.v1'), u = T.sw().unlocked;
-    await T.openSettings(); document.getElementById('sUnlock').click(); await wait(20); await T.closeSettings();
+    await T.openSettings(); wBtn('sUnlock').click(); await wait(20); await T.closeSettings();
     return ok(T.sw().unlocked === u + 1 && T.raw('ctt.v1') === v1, { before: u, after: T.sw().unlocked, v1Same: T.raw('ctt.v1') === v1 });
   }];
   const F26 = () => {
@@ -980,7 +1008,7 @@
     if (T.isNew) { T.mode('words'); await wait(20); T.typeLesson({ upTo: 30 }); }
     T.freeze(T0 + 70000);
     T.mode('adaptive'); await wait(20);
-    await T.save('we12-' + (T.isNew ? 'new' : 'head') + '.json', { v1: T.raw('ctt.v1') });
+    await T.save('we12-' + T.build + '.json', { v1: T.raw('ctt.v1') });
     return ok(T.raw('ctt.words.v1') === w, { sidecarSame: T.raw('ctt.words.v1') === w });
   }];
   R['WE-13'] = [weSetup(F12()), async () => {

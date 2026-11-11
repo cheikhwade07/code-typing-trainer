@@ -166,7 +166,7 @@
       const all = W.unlocked >= WORDS.ORDER.length;
       buildText.sentences = all && Math.random() < 0.5;
       buildText.focus = buildText.sentences ? null : plan.focus;
-      return WORDS.text(ENGINE.unlockedList(W), plan, W.prefs.lessonLen, buildText.sentences);
+      return WORDS.text(ENGINE.unlockedList(W), plan, W.prefs.lessonLen, buildText.sentences, W.prefs);
     }
     if (mode === 'adaptive') {
       const plan = ENGINE.plan(state);
@@ -295,11 +295,8 @@
     SYNC.cancelWords(); // an older queued upload must not overwrite it
     words = STORE.mergeWords(raw);
     STORE.saveWords(words, true); // keep its savedAt
-    if ($('settings').open) {
-      // An open Settings dialog must not write its old Words values back on close.
-      $('sWordsTarget').value = words.prefs.targetWpm;
-      if (wordsOn) $('sLen').value = words.prefs.lessonLen;
-    }
+    // An open Settings dialog must not write its old Words values back on close.
+    if ($('settings').open) fillWordsFields();
     guardWords(refreshWords);
     if (msg) toast(msg);
   }
@@ -604,6 +601,8 @@
         if (p.phase !== 'learn' && also.length) html += ' · also <b>' + also.map(esc).join(' ') + '</b>';
       }
       if (p.letters.length) html += (html ? ' · ' : '') + 'letters <b>' + p.letters.join(' ') + '</b>';
+      const wp = isWords() && words.prefs;
+      if (wp && (wp.caps || wp.nums || wp.punct)) html += (html ? ' · ' : '') + 'extras not counted in letter stats';
     } else if (curMode() === 'warmup') {
       const w = warm();
       html = 'Warmup · <b>' + LAYOUT.FINGER_NAMES[w.finger] + '</b> · ' + WARM_STAGES[w.stage][0] +
@@ -755,7 +754,9 @@
       L.prevCh = exp;
       spans[L.pos].classList.add('done');
       if (L.errorsAt.has(L.pos)) spans[L.pos].classList.add('err');
-      L.lastT = now;
+      // In Words, the letter after a capital, digit or punctuation mark is not timed
+      // (the gap includes Shift or a reach outside the letters).
+      L.lastT = isWords(L.mode) && exp !== ' ' && !recordable(L, exp) ? null : now;
       L.typed++;
       L.pos++;
       skipAuto();
@@ -1083,25 +1084,42 @@
   }
 
   // ---------- settings ----------
+  // Three tabs: General (shared), Symbols (main progress), Words (Words save only).
   const dlg = $('settings');
-  $('settingsBtn').addEventListener('click', () => {
+  function setSettingsTab(tab) {
+    dlg.querySelectorAll('.seg button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    dlg.querySelectorAll('section.tab').forEach((sec) => (sec.hidden = sec.dataset.tab !== tab));
+  }
+  dlg.querySelectorAll('.seg button[data-tab]').forEach((b) =>
+    b.addEventListener('click', () => setSettingsTab(b.dataset.tab))
+  );
+  function fillWordsFields() {
+    const wp = words.prefs;
+    $('sWordsTarget').value = wp.targetWpm;
+    $('sWordsLen').value = wp.lessonLen;
+    $('sWordsCaps').value = String(wp.caps);
+    $('sWordsNums').checked = wp.nums;
+    $('sWordsPunct').checked = wp.punct;
+  }
+  function fillMainFields() {
     const s = state.settings;
     $('sTarget').value = s.targetWpm;
-    $('sWordsTarget').value = words.prefs.targetWpm;
-    $('sLen').value = wordsOn ? words.prefs.lessonLen : s.lessonLen;
-    // These act on the mode on screen.
-    $('sLenLabel').textContent = wordsOn ? 'Words lesson length (characters)' : 'Adaptive lesson length (characters)';
-    $('sUnlock').textContent = wordsOn ? 'Unlock next letter (Words)' : 'Unlock next symbol';
-    $('sReset').textContent = wordsOn ? 'Reset Words progress' : 'Reset progress';
-    renderWordsSync();
+    $('sLen').value = s.lessonLen;
+    $('sFocus').value = s.focusStyle || 'single';
     $('sStop').checked = s.stopOnError;
     $('sSound').checked = s.sound;
     $('sVol').value = s.volume;
     $('sKeymap').checked = s.showKeymap;
     $('sNext').checked = s.highlightNext;
     $('sFingers').checked = s.fingerColors;
-    $('sFocus').value = s.focusStyle || 'single';
+  }
+  $('settingsBtn').addEventListener('click', () => {
+    fillMainFields();
+    fillWordsFields();
     renderSync();
+    renderWordsSync();
+    // Opens on the tab of the mode on screen; General from Warmup.
+    setSettingsTab(wordsOn ? 'words' : curMode() === 'warmup' ? 'general' : 'symbols');
     dlg.showModal();
   });
   function readSettings() {
@@ -1109,11 +1127,7 @@
     const before = JSON.stringify(s);
     const clamp = (v, lo, hi, d) => (isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
     s.targetWpm = clamp(parseFloat($('sTarget').value), 10, 120, 30);
-    const wp = words.prefs;
-    const wBefore = JSON.stringify(wp);
-    wp.targetWpm = clamp(parseFloat($('sWordsTarget').value), 10, 150, 35);
-    if (wordsOn) wp.lessonLen = clamp(parseFloat($('sLen').value), 30, 200, 70);
-    else s.lessonLen = clamp(parseFloat($('sLen').value), 30, 200, 70);
+    s.lessonLen = clamp(parseFloat($('sLen').value), 30, 200, 70);
     s.stopOnError = $('sStop').checked;
     s.sound = $('sSound').checked;
     s.volume = parseFloat($('sVol').value);
@@ -1121,20 +1135,38 @@
     s.highlightNext = $('sNext').checked;
     s.fingerColors = $('sFingers').checked;
     s.focusStyle = $('sFocus').value === 'mixed' ? 'mixed' : 'single';
+    const wp = words.prefs;
+    const wBefore = JSON.stringify(wp);
+    const textBefore = JSON.stringify([wp.lessonLen, wp.caps, wp.nums, wp.punct]);
+    wp.targetWpm = clamp(parseFloat($('sWordsTarget').value), 10, 150, 35);
+    wp.lessonLen = clamp(parseFloat($('sWordsLen').value), 30, 200, 70);
+    wp.caps = clamp(parseInt($('sWordsCaps').value, 10), 0, 2, 0);
+    wp.nums = $('sWordsNums').checked;
+    wp.punct = $('sWordsPunct').checked;
     if (JSON.stringify(wp) !== wBefore) persistWords();
-    // In symbol modes, as before; in Words mode, only when a shared setting changed.
-    if (!wordsOn || JSON.stringify(s) !== before) persist();
+    // The main save is written only when a main setting changed, so Words settings
+    // (and opening/closing the dialog) never touch it.
+    if (JSON.stringify(s) !== before) persist();
     applySettings();
     renderStrip();
+    // New Words text options apply at once if no Words lesson is under way.
+    if (wordsOn && textBefore !== JSON.stringify([wp.lessonLen, wp.caps, wp.nums, wp.punct]) && lesson && lesson.start === null) {
+      newLesson();
+    }
   }
   dlg.querySelectorAll('input:not([type=file]), select').forEach((i) => i.addEventListener('change', readSettings));
   dlg.addEventListener('close', () => { readSettings(); renderFocus(); });
   $('sUnlock').addEventListener('click', () => {
-    const ch = ENGINE.forceUnlock(trk());
-    if (isWords()) persistWords();
-    else persist();
+    const ch = ENGINE.forceUnlock(state);
+    persist();
     renderStrip();
-    toast(ch ? 'Unlocked: ' + ch : isWords() ? 'All letters are unlocked' : 'All symbols are unlocked');
+    toast(ch ? 'Unlocked: ' + ch : 'All symbols are unlocked');
+  });
+  $('sUnlockWords').addEventListener('click', () => {
+    const ch = ENGINE.forceUnlock(wordsState());
+    persistWords();
+    renderStrip();
+    toast(ch ? 'Words: unlocked ' + ch : 'All letters are unlocked');
   });
   $('sExport').addEventListener('click', () => STORE.exportJson(state));
   $('sExportWords').addEventListener('click', () => STORE.exportWords(words));
@@ -1150,12 +1182,14 @@
         words = STORE.mergeWords(obj);
         persistWords();
         boot();
+        fillWordsFields();
         toast('Words progress imported');
       } else {
         const skipped = obj && obj.words && Array.isArray(obj.words.lessons) && obj.words.lessons.length > 0 && words.lessons.length > 0;
         state = STORE.merge(obj);
         persist();
         boot();
+        fillMainFields();
         toast(skipped ? 'Progress imported. Words progress in this file was not imported; use a Words export' : 'Progress imported');
       }
     } catch (err) {
@@ -1163,19 +1197,18 @@
     }
     e.target.value = '';
   });
+  $('sResetWords').addEventListener('click', () => {
+    if (!confirm('Reset Words mode progress? The symbol progress is not affected. Export Words first if you want a backup.')) return;
+    const prefs = words.prefs;
+    SYNC.cancelWords();
+    words = STORE.wordsDefaults();
+    words.prefs = prefs;
+    persistWords();
+    boot();
+    toast('Words progress reset');
+  });
   $('sReset').addEventListener('click', () => {
-    if (wordsOn) {
-      if (!confirm('Reset Words mode progress? The symbol progress is not affected. Export Words first if you want a backup.')) return;
-      const prefs = words.prefs;
-      SYNC.cancelWords();
-      words = STORE.wordsDefaults();
-      words.prefs = prefs;
-      persistWords();
-      boot();
-      toast('Words progress reset');
-      return;
-    }
-    if (!confirm('Reset all progress and stats? Export first if you want a backup.')) return;
+    if (!confirm('Reset symbol progress and stats? Words mode progress is not affected. Export first if you want a backup.')) return;
     const settings = state.settings;
     state = STORE.defaults();
     state.settings = settings;

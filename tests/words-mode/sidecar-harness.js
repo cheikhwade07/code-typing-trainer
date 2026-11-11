@@ -14,9 +14,13 @@ window.T = (function () {
   const d0 = new Date(); d0.setHours(12, 0, 0, 0);
   const T0 = d0.getTime();
   const isNew = !!C.WORDS;
+  // Tabbed Settings dialog (General | Symbols | Words) with Words-only controls.
+  const isNewTabs = !!document.getElementById('sWordsLen');
 
   const T = {
-    ORDER, DAY, T0, WFILE, MFILE, RFILE, wait, isNew, TP,
+    ORDER, DAY, T0, WFILE, MFILE, RFILE, wait, isNew, isNewTabs, TP,
+    // Artifact label for build comparisons: the build under test vs the baseline (HEAD).
+    build: isNewTabs ? 'new' : 'head',
     get errors() { return TP.errors; },
     freeze(ts) { TP.clock = ts; },
     tick(ms) { TP.clock += ms; },
@@ -159,7 +163,10 @@ window.T = (function () {
       const keys = {};
       for (const ch of ORDER.slice(0, n)) keys[ch] = { hist: T.hist(40, 0.95, now, 5), level: 0, due: null };
       return Object.assign({
-        kind: 'ctt-words', v: 1, savedAt: now - 5000, prefs: { targetWpm: 35, lessonLen: 70 },
+        kind: 'ctt-words', v: 1, savedAt: now - 5000,
+        // Builds with Words extras store caps/nums/punct; a fixture without them would differ from
+        // the stored (merged) copy only by these defaults.
+        prefs: Object.assign({ targetWpm: 35, lessonLen: 70 }, isNewTabs ? { caps: 0, nums: false, punct: false } : {}),
         unlocked: n, sinceUnlock: 3, keys, confusions: { e: [{ c: 'r', ts: now - 3600000 }] }, pairs: {}, cooldown: {}, focusRun: null,
         lessons: Array.from({ length: 12 }, (_, i) => ({ ts: now - (12 - i) * 3600000, mode: 'words', wpm: 40, acc: 0.95, chars: 70, errors: 3, sameHand: 0, shifted: 0, dur: 60000 })),
       }, o || {});

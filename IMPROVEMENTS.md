@@ -10,6 +10,47 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-11: Settings tabs, Words extras, larger word list
+
+Commit: see `git log --grep "Settings tabs"`.
+
+### Why
+
+Settings mixed symbol and Words options, and "Lesson length", "Unlock" and
+"Reset" changed meaning with the mode on screen. Words also only had plain
+lowercase words from a list of about 950.
+
+### What changed
+
+| Area | Before | After | Where |
+|---|---|---|---|
+| Settings layout | one list; three buttons act on the mode on screen | tabs General (shared, sync, Import) / Symbols / Words, each with its own Unlock, Export, Reset; opens on the tab of the mode on screen (General from Warmup) | `index.html`, `setSettingsTab` in `js/app.js` |
+| Words lesson length | shared field, switched by mode | own field `sWordsLen` | Words save `prefs.lessonLen` |
+| Words extras | none | Capitals off / sometimes (15% of words) / often (40% + after `.` `?`); Numbers (12% chance before a word); Punctuation (15% chance of `, . ? ; :` after a word, last word ends with `.`) | `prefs.caps`, `prefs.nums`, `prefs.punct`; rates `CAPS_RATE`, `NUM_RATE`, `PUNCT_RATE` in `js/words.js` |
+| Letter stats in Words | lowercase a-z recorded | same; extras count in the lesson's WPM and accuracy only; the letter right after an extra is not timed (Shift reach) | `recordable`, `onChar` in `js/app.js` |
+| Word list | about 700 common + 250 ML | 1,760 common + 598 ML (2,358); 219 usable with the first 10 letters; every letter in 40+ words | `js/words.js` |
+| Main save on Settings | re-saved on every change and close in symbol modes | saved only when a main setting changed | `readSettings` |
+
+- Sentences (all 26 letters) keep their own capitals and punctuation; the
+  extras apply to word lessons only.
+- Old Words saves load with all extras off.
+
+### Tests
+
+Full regression of the Words sidecar suite plus new settings, extras and
+word-list tests: `tests/words-mode/extras-results.md`. Main save identity
+with the previous version still holds; the only difference is the skipped
+no-change saves from Settings.
+
+### Rollback / tweak
+
+- `git revert` the commit. The Words save keeps `caps`/`nums`/`punct`; the
+  previous version ignores them.
+- Rates: `CAPS_RATE`, `NUM_RATE`, `PUNCT_RATE`, `NUMBERS`, `PUNCT` at the top
+  of the extras block in `js/words.js`.
+
+---
+
 ## 2026-11-11: Words mode (side feature, separate save)
 
 Commit: see `git log --grep "Words mode"`.
@@ -49,7 +90,7 @@ parsed on every main load. The released design keeps Words fully apart:
   `guardWords` in `js/app.js` switches back to the symbols if Words data still
   cannot be shown, so bad Words data can never stop the app from starting.
 - Settings: own target speed (10–150, default 35); Lesson length, Unlock and
-  Reset act on the mode on screen.
+  Reset acted on the mode on screen (replaced by Settings tabs, see above).
 - Engine: `js/engine.js` reads the key order from `state.order || TRAIN`
   (`ord()`), so it runs on the Words save; `order` and `settings` are
   attached as non-enumerable (never saved). Only a-z is recorded in Words, no

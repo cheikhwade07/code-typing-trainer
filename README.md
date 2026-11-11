@@ -33,16 +33,21 @@ works, without automatic saving.
   Enter at each line break.
 - **My code**: paste code you have already written and retype it in chunks of
   4 lines. Indentation fills in automatically.
-- **Words** (side mode): keybr-style letter training with everyday and AI/ML
-  words (*attention, gradient, tensor...*). Starts with 10 letters
+- **Words** (side mode): keybr-style letter training with about 2,350 words:
+  common everyday words and words from AI/ML papers (*attention, gradient,
+  tensor...*). Starts with 10 letters
   (`e t a o i n s r h l`) and unlocks the rest by frequency, using the same
   mastery and unlock rules as the symbols, with its own target speed
-  (Settings, default 35 WPM). Once all 26 letters are unlocked, about half
+  (default 35 WPM) and lesson length. Optional extras (Settings → Words):
+  capital letters (off / sometimes / often), numbers, punctuation; they
+  count in the lesson's speed and accuracy but not in the letter stats or
+  unlocking. Once all 26 letters are unlocked, about half
   the lessons are short original ML sentences. Its progress is a separate
   save (browser, gist file, `data/words.json`), so Words typing never changes
   the symbol progress or its saves. Stats has a *Symbols | Words* toggle;
   Copy/Download report add a Words section once you have a Words lesson.
-  Lesson length, Unlock and Reset in Settings act on the mode on screen.
+  Settings has three tabs: General (shared), Symbols and Words, each with
+  its own Unlock, Export and Reset.
 - **Warmup**: pick a finger and a round (tour, home row, top row, bottom row,
   number row, mix). Rounds reach from the home key to each of its keys
   and back (`;p ;p p;`), row by row: home row, top row, bottom row, number
@@ -123,9 +128,9 @@ typing stats. If the token expires or is revoked, the header shows
 - Synthesized key, error, and unlock sounds (Web Audio, no audio files).
 - Per-symbol accuracy, speed, and confidence; progress chart; practice time
   today.
-- Progress saved to `data/` (see above) and in the browser; Settings → Export
-  makes an extra backup (Export Words progress for Words mode; Import accepts
-  either file).
+- Progress saved to `data/` (see above) and in the browser; Export in the
+  Symbols and Words tabs of Settings makes an extra backup; Import (General
+  tab) accepts either file.
 
 ## Files
 

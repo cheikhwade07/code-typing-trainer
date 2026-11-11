@@ -86,45 +86,82 @@
 
   <dialog id="settings">
     <form method="dialog" class="settings">
-      <h2>Settings</h2>
-      <label>Focus style
-        <select id="sFocus">
-          <option value="single">One key at a time (keybr-style)</option>
-          <option value="mixed">Balanced mix</option>
-        </select>
-      </label>
-      <label>Target speed per symbol (WPM) <input type="number" id="sTarget" min="10" max="120" step="1"></label>
-      <label>Target speed per letter, Words mode (WPM) <input type="number" id="sWordsTarget" min="10" max="150" step="1"></label>
-      <label><span id="sLenLabel">Adaptive lesson length (characters)</span> <input type="number" id="sLen" min="30" max="200" step="5"></label>
-      <label class="check"><input type="checkbox" id="sStop"> Stop on error (must fix a wrong key before moving on)</label>
-      <label class="check"><input type="checkbox" id="sSound"> Sounds</label>
-      <label>Volume <input type="range" id="sVol" min="0" max="1" step="0.05"></label>
-      <label class="check"><input type="checkbox" id="sKeymap"> Show keyboard</label>
-      <label class="check"><input type="checkbox" id="sNext"> Highlight next key</label>
-      <label class="check"><input type="checkbox" id="sFingers"> Finger colors</label>
-      <fieldset class="sync">
-        <legend>Sync across devices (GitHub Gist)</legend>
-        <p class="muted small" id="syncInfo"></p>
-        <p class="muted small warn" id="wordsSyncInfo" hidden></p>
-        <div class="row wrap" id="syncConnectRow">
-          <input type="password" id="sToken" placeholder="GitHub token with gist scope" autocomplete="off" spellcheck="false">
-          <button type="button" id="sConnect">Connect</button>
-          <a id="sTokenLink" class="small" target="_blank" rel="noopener">Create a token</a>
+      <div class="stats-head">
+        <h2>Settings</h2>
+        <div class="seg" role="tablist" aria-label="Settings for">
+          <button type="button" data-tab="general" class="on">General</button>
+          <button type="button" data-tab="symbols">Symbols</button>
+          <button type="button" data-tab="words">Words</button>
         </div>
-        <div class="row wrap" id="syncOnRow" hidden>
-          <button type="button" id="sSyncNow" class="ghost">Sync now</button>
-          <a id="sGistLink" class="small" target="_blank" rel="noopener">Open gist</a>
-          <button type="button" id="sDisconnect" class="ghost">Disconnect</button>
-        </div>
-      </fieldset>
-      <div class="row wrap">
-        <button type="button" id="sUnlock" class="ghost">Unlock next symbol</button>
-        <button type="button" id="sExport" class="ghost">Export progress</button>
-        <button type="button" id="sExportWords" class="ghost">Export Words progress</button>
-        <button type="button" id="sImport" class="ghost">Import progress</button>
-        <button type="button" id="sReset" class="danger">Reset progress</button>
-        <input type="file" id="sImportFile" accept="application/json" hidden>
       </div>
+
+      <section class="tab" data-tab="general">
+        <label class="check"><input type="checkbox" id="sStop"> Stop on error (must fix a wrong key before moving on)</label>
+        <label class="check"><input type="checkbox" id="sSound"> Sounds</label>
+        <label>Volume <input type="range" id="sVol" min="0" max="1" step="0.05"></label>
+        <label class="check"><input type="checkbox" id="sKeymap"> Show keyboard</label>
+        <label class="check"><input type="checkbox" id="sNext"> Highlight next key</label>
+        <label class="check"><input type="checkbox" id="sFingers"> Finger colors</label>
+        <fieldset class="sync">
+          <legend>Sync across devices (GitHub Gist)</legend>
+          <p class="muted small" id="syncInfo"></p>
+          <p class="muted small warn" id="wordsSyncInfo" hidden></p>
+          <div class="row wrap" id="syncConnectRow">
+            <input type="password" id="sToken" placeholder="GitHub token with gist scope" autocomplete="off" spellcheck="false">
+            <button type="button" id="sConnect">Connect</button>
+            <a id="sTokenLink" class="small" target="_blank" rel="noopener">Create a token</a>
+          </div>
+          <div class="row wrap" id="syncOnRow" hidden>
+            <button type="button" id="sSyncNow" class="ghost">Sync now</button>
+            <a id="sGistLink" class="small" target="_blank" rel="noopener">Open gist</a>
+            <button type="button" id="sDisconnect" class="ghost">Disconnect</button>
+          </div>
+        </fieldset>
+        <div class="row wrap">
+          <button type="button" id="sImport" class="ghost">Import progress</button>
+          <span class="muted small">Accepts a symbols or a Words export.</span>
+          <input type="file" id="sImportFile" accept="application/json" hidden>
+        </div>
+      </section>
+
+      <section class="tab" data-tab="symbols" hidden>
+        <p class="muted small">Adaptive, Lines and My code.</p>
+        <label>Focus style
+          <select id="sFocus">
+            <option value="single">One key at a time (keybr-style)</option>
+            <option value="mixed">Balanced mix</option>
+          </select>
+        </label>
+        <label>Target speed per symbol (WPM) <input type="number" id="sTarget" min="10" max="120" step="1"></label>
+        <label>Adaptive lesson length (characters) <input type="number" id="sLen" min="30" max="200" step="5"></label>
+        <div class="row wrap">
+          <button type="button" id="sUnlock" class="ghost">Unlock next symbol</button>
+          <button type="button" id="sExport" class="ghost">Export progress</button>
+          <button type="button" id="sReset" class="danger">Reset symbol progress</button>
+        </div>
+      </section>
+
+      <section class="tab" data-tab="words" hidden>
+        <p class="muted small">Words mode only. Its progress is separate from the symbols.</p>
+        <label>Target speed per letter (WPM) <input type="number" id="sWordsTarget" min="10" max="150" step="1"></label>
+        <label>Lesson length (characters) <input type="number" id="sWordsLen" min="30" max="200" step="5"></label>
+        <label>Capital letters
+          <select id="sWordsCaps">
+            <option value="0">Off</option>
+            <option value="1">Sometimes</option>
+            <option value="2">Often</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="sWordsNums"> Numbers (3, 64, 0.5…)</label>
+        <label class="check"><input type="checkbox" id="sWordsPunct"> Punctuation (, . ? ; :)</label>
+        <p class="muted small">Capitals, numbers and punctuation count in the lesson's speed and accuracy, but not in the letter stats or unlocking.</p>
+        <div class="row wrap">
+          <button type="button" id="sUnlockWords" class="ghost">Unlock next letter</button>
+          <button type="button" id="sExportWords" class="ghost">Export Words progress</button>
+          <button type="button" id="sResetWords" class="danger">Reset Words progress</button>
+        </div>
+      </section>
+
       <div class="row end"><button value="close">Done</button></div>
     </form>
   </dialog>
