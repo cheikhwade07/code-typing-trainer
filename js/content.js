@@ -69,7 +69,25 @@
     '§_§ - 1', '§_§ -= 1', '[§_§ - ¤]', '{§: [§]}', '§[§] = {}', '{§: §[¤]}', 'len(§[¤])',
     '§[§(¤)]', '(§[¤], §[¤])', '"§" + \'§\'', '§_§: int = ¤', '§[¤:¤] == §[¤:]', '§ == §_§',
     '§.§_§(¤)', '§ <= §_§ < §', '{§, §} | {§}', '§ != -1', '§ * (§ + 1) // 2',
+    // Python keywords and LeetCode names, capitals included (True, None, ListNode...)
+    'if § is None:', 'return §[0] is not None', 'while § is not None:', 'if not §: return False',
+    'if § in §: return True', '§ = None', 'return None,', '§ = True', '§ = False', 'class Solution:',
+    'def §(self, §: List[int]) -> int:', 'def §(self, §: str) -> bool:', '§: Optional[TreeNode]',
+    '§: Optional[ListNode] = None', '§ = ListNode(¤)', '§ = TreeNode(¤)', '§ = defaultdict(int)',
+    '§ = deque([§])', '§ = Counter(§)', '§ = §.popleft()', 'isinstance(§, int)', 'for § in reversed(§):',
+    'bisect.bisect_left(§, §)', 'if § == §: continue', 'if § > §: break', '§ = float("-inf")',
+    'with open(§) as §:', 'from typing import List, Optional', 'lambda §: § is None', 'except KeyError:',
+    'try: § = int(§)', 'yield from self.dfs(§)', 'elif § and not §:', 'del §[§]',
+    'assert isinstance(§, list)', '@staticmethod', '@dataclass', 'return self.dfs(§)', 'super().__init__()',
   ];
+
+  // Trouble words (set per lesson) are mixed into Adaptive bare or in a short wrapper.
+  // Keywords and constants are always bare (no "True = 0" or "if if:").
+  const WORD_WRAP = ['§(', 'if §:', '(§)', '[§]', '§ = 0', '§, §', 'not §'];
+  const BARE = new Set(['False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break',
+    'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global',
+    'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try',
+    'while', 'with', 'yield', 'self', 'cls']);
 
   // Generic Python idioms for Lines mode (not solutions to any practice problem).
   const LINES = [
@@ -133,6 +151,34 @@
     'matrix[i][j], matrix[j][i] = matrix[j][i], matrix[i][j]',
     '@lru_cache(maxsize=None)',
     'counts = Counter(s)',
+    'from typing import List, Optional',
+    'def __init__(self, val=0, left=None, right=None):',
+    'def maxDepth(self, root: Optional[TreeNode]) -> int:',
+    'def reverseList(self, head: Optional[ListNode]) -> Optional[ListNode]:',
+    'if root is None:',
+    'return 1 + max(self.maxDepth(root.left), self.maxDepth(root.right))',
+    'dummy = ListNode(0)',
+    'tail.next = ListNode(val)',
+    'while fast and fast.next:',
+    'slow, fast = slow.next, fast.next.next',
+    'if slow is fast:',
+    'return True',
+    'return False',
+    'nonlocal best',
+    'if not root: return None',
+    'for key, val in counts.items():',
+    'if isinstance(item, list):',
+    'except (KeyError, IndexError):',
+    'lo, hi = 0, len(nums)',
+    'i = bisect.bisect_left(nums, target)',
+    'adj = defaultdict(list)',
+    'q = deque([(0, 0)])',
+    'r, c = q.popleft()',
+    'if grid[r][c] == "1" and (r, c) not in seen:',
+    'return sorted(counts, key=counts.get, reverse=True)[:k]',
+    'res = float("-inf")',
+    'yield from self.inorder(node.left)',
+    'raise NotImplementedError',
   ];
 
   function pick(arr) {
@@ -206,7 +252,22 @@
     const out = [];
     let size = 0;
     let guard = 0;
+    const tw = plan.words || [];
+    // One roll per template chunk actually added, so rejected templates (locked
+    // symbols) do not raise the share of trouble words.
+    let roll = true;
     while (size < length && guard++ < 2000) {
+      // ~15% of chunks (8% while learning a key) are a trouble word, bare or wrapped.
+      if (tw.length && roll && ((roll = false), Math.random() < (learn ? 0.08 : 0.15))) {
+        const word = pick(tw);
+        const wraps = WORD_WRAP.filter((t) => [...symbolsIn(t)].every((c) => unl.has(c)));
+        const s = BARE.has(word) || Math.random() < 0.5 || !wraps.length ? word : pick(wraps).split('§').join(word);
+        if (!out.length || out[out.length - 1] !== s) {
+          out.push(s);
+          size += s.length + 1;
+        }
+        continue;
+      }
       const r = Math.random();
       let pool = TEMPLATES;
       let s = null;
@@ -230,17 +291,23 @@
       if (out.length && out[out.length - 1] === s) continue;
       out.push(s);
       size += s.length + 1;
+      roll = true;
     }
     return out.join(' ');
   }
 
   // Weighted pick of lines toward weak symbols. weakness(ch) -> 0..1
   // letters: weak letters; lines using them get a small extra weight.
-  function lines(weakness, count, letters) {
+  // words: trouble words; a line containing one gets a larger extra weight.
+  function lines(weakness, count, letters, words) {
     const pool = LINES.map((l) => {
       let w = 1;
       for (const c of symbolsIn(l)) w += 2 * weakness(c);
       for (const c of letters || []) w += 0.25 * Math.min(4, l.split(c).length - 1);
+      if (words && words.length) {
+        const inLine = new Set(l.match(/[A-Za-z_][A-Za-z0-9_]*/g) || []);
+        for (const wd of words) if (inLine.has(wd)) w += 3;
+      }
       return { l, w };
     });
     const out = [];

@@ -81,6 +81,13 @@ works, without automatic saving.
   accuracy (with enough recent samples) get mixed in: about half of the
   names in Adaptive drills contain one, and Lines leans toward lines that use
   them. Symbols stay the focus. Stats and the report list the weakest letters.
+- **Trouble words**: every identifier and keyword you type in Adaptive, Lines
+  and My code (`return`, `ListNode`, `True`, `max_len`; case counts) is
+  recorded as typed cleanly or not, and how fast. Words with 3+ recent
+  samples are ranked by misses and slowness; up to 5 of the worst get mixed
+  into Adaptive (about 15% of chunks) and Lines. Stats ("Trouble words") and
+  the report list them. Adaptive and Lines include Python keywords and
+  LeetCode names (`None`, `Optional[TreeNode]`, `defaultdict`, `nonlocal`...).
 - **Slow transitions**: timing between consecutive keys involving a symbol
   (for example `](`) is recorded and listed in Stats and the report.
 

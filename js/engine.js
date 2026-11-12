@@ -207,7 +207,12 @@
       if (inLearnPhase(state, stats(state, focus, now))) phase = 'learn';
     }
     // Weak-letter mixing belongs to the main (symbol) state only.
-    return { focus, secondary, partner, phase, letters: state.order ? [] : weakLetters(state, now) };
+    return {
+      focus, secondary, partner, phase,
+      letters: state.order ? [] : weakLetters(state, now),
+      // Adaptive must never show a locked symbol (e.g. _ in max_len before _ unlocks).
+      words: drillWords(state, now, new Set(partner ? unl.concat(partner) : unl)),
+    };
   }
 
   // Called after every lesson. perKey: ch -> { n, ok, tSum, tN }. Returns event strings.
@@ -353,6 +358,110 @@
     return out.sort((a, b) => b.count - a.count).slice(0, limit || 10);
   }
 
+  // ---------- words in code (main state only) ----------
+  // Every identifier or keyword typed in Adaptive, Lines and My code: was it typed
+  // without a mistake, and how fast (ms per character from its first to its last
+  // letter). Case is kept: True and true are different words.
+  // A sample is a compact pair [ms, ts]: ms > 0 clean and timed, -1 clean but
+  // untimed, 0 a miss (the save stays small: about 22 bytes per sample).
+  const WORD_HIST = 10; // samples kept per word
+  const WORD_CAP = 200; // words kept; the least recently typed go first
+  const WORD_MIN = 3; // samples in the window before a word can rank
+  const WORD_DRILL = 5; // trouble words mixed into drills at once
+  const WORD_BAR = 0.2; // trouble score from which a word is drilled
+  const WORD_MAXLEN = 60; // longer names are not recorded
+  const WORD_RE = /[A-Za-z_][A-Za-z0-9_]*/g;
+  const isWordName = (w) => w.length >= 2 && w.length <= WORD_MAXLEN && /[A-Za-z]/.test(w) && w !== '__proto__';
+
+  // Words in a lesson text: [{ word, start, end }].
+  function wordSpans(text) {
+    const out = [];
+    let m;
+    WORD_RE.lastIndex = 0;
+    while ((m = WORD_RE.exec(text))) {
+      // Skip the tail of a number literal (e5 in 1e5, x1f in 0x1f).
+      if (m.index > 0 && /[0-9]/.test(text[m.index - 1])) continue;
+      if (isWordName(m[0])) out.push({ word: m[0], start: m.index, end: m.index + m[0].length });
+    }
+    return out;
+  }
+
+  function pruneSamples(h, now) {
+    const cut = now - MAX_AGE_D * DAY;
+    let i = 0;
+    while (i < h.length && h[i][1] < cut) i++;
+    if (i) h.splice(0, i);
+    if (h.length > WORD_HIST) h.splice(0, h.length - WORD_HIST);
+  }
+
+  function recordWord(state, word, ok, ms) {
+    if (!isWordName(word)) return;
+    const now = Date.now();
+    const T = (state.tokens = state.tokens || {});
+    const h = (T[word] = Array.isArray(T[word]) ? T[word] : []);
+    h.push([!ok ? 0 : ms != null && isFinite(ms) && ms > 0 ? Math.max(1, Math.round(ms)) : -1, now]);
+    pruneSamples(h, now);
+  }
+
+  // After a lesson: drop expired samples and keep at most WORD_CAP words.
+  function pruneWords(state, now) {
+    now = now || Date.now();
+    const T = state.tokens || {};
+    const last = [];
+    for (const w of Object.keys(T)) {
+      if (!Array.isArray(T[w])) { delete T[w]; continue; }
+      pruneSamples(T[w], now);
+      if (!T[w].length) delete T[w];
+      else last.push([w, T[w][T[w].length - 1][1]]);
+    }
+    if (last.length > WORD_CAP) {
+      last.sort((a, b) => a[1] - b[1]);
+      for (const [w] of last.slice(0, last.length - WORD_CAP)) delete T[w];
+    }
+  }
+
+  // { word, n, miss (weighted miss rate), wpm (median clean speed), score }.
+  // score = miss + half the shortfall from the target speed; 0 is a clean, fast word.
+  function wordStats(state, word, now) {
+    now = now || Date.now();
+    const T = state.tokens || {};
+    const raw = Object.prototype.hasOwnProperty.call(T, word) && Array.isArray(T[word]) ? T[word] : [];
+    const h = raw.filter((s) => Array.isArray(s) && weight(s[1], now));
+    let w = 0, wmiss = 0;
+    const ms = [];
+    for (const s of h) {
+      const x = weight(s[1], now);
+      w += x;
+      if (s[0] === 0) wmiss += x;
+      else if (s[0] > 0) ms.push(s[0]);
+    }
+    ms.sort((a, b) => a - b);
+    const med = ms.length ? ms[Math.floor(ms.length / 2)] : null;
+    const wpm = med ? 12000 / med : null;
+    const miss = w ? wmiss / w : 0;
+    const target = state.settings.targetWpm;
+    const slow = wpm ? Math.max(0, 1 - wpm / target) : 0;
+    return { word, n: h.length, miss, wpm, score: miss + 0.5 * slow };
+  }
+
+  // Words with enough samples, worst first (score > 0 only).
+  function troubleWords(state, limit, now) {
+    now = now || Date.now();
+    return Object.keys(state.tokens || {})
+      .map((w) => wordStats(state, w, now))
+      .filter((x) => x.n >= WORD_MIN && x.score > 0)
+      .sort((a, b) => b.score - a.score || b.n - a.n)
+      .slice(0, limit || 8);
+  }
+
+  // Trouble words that drills mix in (main state only). With allowed (a Set of
+  // usable symbols), words containing any other trained symbol are skipped.
+  function drillWords(state, now, allowed) {
+    if (state.order) return [];
+    const okWord = (w) => !allowed || [...w].every((c) => !TRAIN.includes(c) || allowed.has(c));
+    return troubleWords(state, 50, now).filter((x) => x.score >= WORD_BAR && okWord(x.word)).slice(0, WORD_DRILL).map((x) => x.word);
+  }
+
   // Plain-language unlock status, e.g. "= in 4 adaptive lessons".
   CTT.unlockText = function (u, next, noun, lessonNoun) {
     const ln = lessonNoun || 'adaptive lesson';
@@ -368,7 +477,9 @@
     record, recordPair, stats, unlockedList, focusKey, plan, afterLesson, forceUnlock, weakness, weakLetters, LETTERS,
     unlockStatus, wilson,
     topConfusions, allConfusions, slowPairs,
+    wordSpans, recordWord, pruneWords, wordStats, troubleWords, drillWords,
     CONST: {
+      WORD_HIST, WORD_CAP, WORD_MIN, WORD_DRILL, WORD_BAR, WORD_MAXLEN,
       DAY, HALF_LIFE_D, MAX_AGE_D, ACC_TARGET, INTERVALS, MIN_EFF, LETTER_ACC, LETTER_MIN, HIST, ATTEMPT_HALF,
       MASTER_BAR, Z_MASTER, DEMOTE_BAR, Z_DEMOTE, PASS_DAYS, DAY_ACC, STALL_LESSONS, STALL_FLOOR, MAX_NOT_GOOD,
     },

@@ -82,6 +82,15 @@
     } else out.push('None recorded yet.');
     out.push('');
 
+    const tw = ENGINE.troubleWords(state, 15, now);
+    const drillW = new Set(ENGINE.drillWords(state, now));
+    out.push('## Trouble words in code (worst first; ' + C.WORD_MIN + '+ samples, last ' + C.MAX_AGE_D + ' days; score from ' + C.WORD_BAR + ' gets mixed into Adaptive and Lines)', '');
+    if (tw.length) {
+      out.push('| Word | Samples | Accuracy | Speed (WPM) | Score | In drills |', '|---|---|---|---|---|---|');
+      tw.forEach((x) => out.push('| `' + x.word + '` | ' + x.n + ' | ' + pct(1 - x.miss) + ' | ' + num(x.wpm) + ' | ' + num(x.score, 2) + ' | ' + (drillW.has(x.word) ? 'yes' : '–') + ' |'));
+    } else out.push('Not enough data yet.');
+    out.push('');
+
     const conf = ENGINE.allConfusions(state, 12);
     out.push('## Top mix-ups (expected → typed, last 21 days)', '');
     if (conf.length) {

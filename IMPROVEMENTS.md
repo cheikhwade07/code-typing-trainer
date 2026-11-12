@@ -10,6 +10,46 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-11: Trouble words in code
+
+Commit: see `git log --grep "Trouble words"`.
+
+### Why
+
+Mistakes were tracked per key and per key pair only. The trainer could tell
+that `)` after `t` was slow, but not that `return` or `ListNode` kept going
+wrong. Python keywords and LeetCode names (some with capitals) are what the
+code practice is for.
+
+### What changed
+
+| Area | Before | After | Where |
+|---|---|---|---|
+| Word samples | none | each identifier/keyword (2+ chars, case kept) in a finished Adaptive, Lines or My code lesson: clean or missed, ms per character from first to last letter (untimed after a gap over 3 s) | `recordLessonWords` in `js/app.js`; `wordSpans`, `recordWord` in `js/engine.js` |
+| Main save | no word data | `tokens: { word: [[ms, ts], ...] }` (ms > 0 timed, -1 untimed, 0 a miss), 10 samples per word, 21 days, 200 words (least recently typed dropped); about 45 KB at the cap; cleaned, sorted and capped on load | `WORD_HIST`, `WORD_CAP`, `WORD_MAXLEN`; `cleanTokens` in `js/store.js` |
+| Ranking | none | score = miss rate + 0.5 × shortfall from the target speed, words with 3+ samples | `wordStats`, `troubleWords`; `WORD_MIN` |
+| Drills | none | up to 5 words with score ≥ 0.2: ~15% of Adaptive chunks (8% while learning a key), bare or in a short wrapper with unlocked symbols (keywords, `True`/`False`/`None`, `self` always bare; words with a locked symbol such as `_` are skipped in Adaptive); Lines gives a line with one +3 weight; backspacing into a word makes it untimed unless fully retyped | `drillWords`, `WORD_DRILL`, `WORD_BAR`; `WORD_WRAP`, `adaptiveText`, `lines` in `js/content.js` |
+| Content | few keyword templates | ~40 templates and ~28 Lines with Python keywords and LeetCode names (`None`, `True`, `ListNode`, `Optional[TreeNode]`, `defaultdict`, `nonlocal`, `bisect`...) | `TEMPLATES`, `LINES` |
+| Stats / report | – | "Trouble words" list, focus line "words …", report section "Trouble words in code" | `index.html`, `renderStats`, `js/report.js` |
+
+- Warmup and Words mode record no words; the Words save is unchanged.
+- Older builds keep the `tokens` field when they re-save (their merge keeps
+  unknown fields) but do not add to it.
+
+### Tests
+
+`tests/word-tracking/results.md`.
+
+### Rollback / tweak
+
+- `git revert` the commit. The `tokens` field left in saves is ignored by
+  the previous version and kept when it re-saves.
+- Thresholds: `WORD_*` constants in the words-in-code block of
+  `js/engine.js`; drill rates in `adaptiveText` (`0.15` / `0.08`) and the
+  Lines weight (`+3`) in `js/content.js`.
+
+---
+
 ## 2026-11-11: Settings tabs, Words extras, larger word list
 
 Commit: see `git log --grep "Settings tabs"`.

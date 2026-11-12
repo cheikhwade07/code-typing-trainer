@@ -30,7 +30,31 @@
       focusRun: null, // { ch, lessons, startConf }
       lessons: [],
       mycode: { text: '', pos: 0 },
+      tokens: {}, // word in code -> [[ms (0 miss, -1 untimed), ts]]
     };
+  }
+
+  // Words typed in code: keep only well-formed entries (a bad entry must not stop boot),
+  // in time order, none from the future, at most the engine's per-word and word caps.
+  function cleanTokens(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    const C = CTT.ENGINE ? CTT.ENGINE.CONST : { WORD_HIST: 10, WORD_CAP: 200, WORD_MAXLEN: 60 };
+    const limit = Date.now() + 86400000;
+    const words = [];
+    for (const w of Object.keys(raw)) {
+      if (w === '__proto__' || w.length < 2 || w.length > C.WORD_MAXLEN || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(w) || !/[A-Za-z]/.test(w)) continue;
+      if (!Array.isArray(raw[w])) continue;
+      const h = raw[w]
+        .filter((s) => Array.isArray(s) && Number.isFinite(s[0]) && Number.isFinite(s[1]) && s[1] <= limit && (s[0] > 0 || s[0] === 0 || s[0] === -1))
+        .map((s) => [s[0], s[1]])
+        .sort((a, b) => a[1] - b[1])
+        .slice(-C.WORD_HIST);
+      if (h.length) words.push([w, h]);
+    }
+    words.sort((a, b) => b[1][b[1].length - 1][1] - a[1][a[1].length - 1][1]);
+    for (const [w, h] of words.slice(0, C.WORD_CAP)) out[w] = h;
+    return out;
   }
 
   function merge(raw) {
@@ -47,6 +71,7 @@
       pairs: raw.pairs || {},
       cooldown: raw.cooldown || {},
       lessons: Array.isArray(raw.lessons) ? raw.lessons : [],
+      tokens: cleanTokens(raw.tokens),
     };
     // v1 -> v2: samples had no timestamp; treat them as recent.
     const now = Date.now();

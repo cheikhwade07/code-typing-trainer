@@ -174,7 +174,7 @@
       return CONTENT.adaptive(ENGINE.unlockedList(state), plan, state.settings.lessonLen);
     }
     if (mode === 'lines') {
-      return CONTENT.lines((ch) => ENGINE.weakness(state, ch), 3, ENGINE.weakLetters(state));
+      return CONTENT.lines((ch) => ENGINE.weakness(state, ch), 3, ENGINE.weakLetters(state), ENGINE.drillWords(state));
     }
     const lines = CONTENT.normalizeCode(state.mycode.text || '');
     if (!lines.length) return null;
@@ -216,6 +216,8 @@
       text, mode: curMode(), pos: 0, auto, errorsAt: new Set(), start: null, lastT: null,
       sameHand: 0, shifted: 0, done: false, typed: 0, perKey: {}, prevCh: null, focus: buildText.focus,
       sentences: buildText.sentences,
+      // Words in code (Adaptive, Lines, My code): spans and when each character was typed.
+      wordSpans: tracksWords(curMode()) ? ENGINE.wordSpans(text) : [], tAt: [],
     };
     skipAuto();
     renderText();
@@ -601,6 +603,7 @@
         if (p.phase !== 'learn' && also.length) html += ' · also <b>' + also.map(esc).join(' ') + '</b>';
       }
       if (p.letters.length) html += (html ? ' · ' : '') + 'letters <b>' + p.letters.join(' ') + '</b>';
+      if (p.words.length) html += (html ? ' · ' : '') + 'words <b>' + p.words.slice(0, 3).join(' ') + '</b>';
       const wp = isWords() && words.prefs;
       if (wp && (wp.caps || wp.nums || wp.punct)) html += (html ? ' · ' : '') + 'extras not counted in letter stats';
     } else if (curMode() === 'warmup') {
@@ -716,6 +719,29 @@
 
   // ---------- typing ----------
   // Warmup records nothing; Words mode records only lowercase letters.
+  const tracksWords = (mode) => mode === 'adaptive' || mode === 'lines' || mode === 'mycode';
+
+  // At the end of a symbol lesson: one sample per word typed. A word is a miss if any
+  // of its characters had a mistake; its speed is ms per character from its first to
+  // its last letter (pauses over 3 s make it untimed).
+  function recordLessonWords(L) {
+    if (!L.wordSpans || !L.wordSpans.length) return;
+    for (const sp of L.wordSpans) {
+      let ok = true;
+      for (let i = sp.start; i < sp.end; i++) if (L.errorsAt.has(i)) { ok = false; break; }
+      let ms = null;
+      if (ok) {
+        let timed = true;
+        for (let i = sp.start + 1; i < sp.end; i++) {
+          if (L.tAt[i] == null || L.tAt[i - 1] == null || L.tAt[i] - L.tAt[i - 1] > 3000) { timed = false; break; }
+        }
+        if (timed) ms = (L.tAt[sp.end - 1] - L.tAt[sp.start]) / (sp.end - sp.start - 1);
+      }
+      ENGINE.recordWord(state, sp.word, ok, ms);
+    }
+    ENGINE.pruneWords(state);
+  }
+
   function recordable(L, exp) {
     if (L.mode === 'warmup') return false;
     if (isWords(L.mode)) return exp >= 'a' && exp <= 'z' && exp.length === 1;
@@ -752,6 +778,7 @@
         }
       }
       L.prevCh = exp;
+      L.tAt[L.pos] = now;
       spans[L.pos].classList.add('done');
       if (L.errorsAt.has(L.pos)) spans[L.pos].classList.add('err');
       // In Words, the letter after a capital, digit or punctuation mark is not timed
@@ -798,6 +825,7 @@
     if (L.auto.has(p)) return;
     spans[p].classList.remove('done', 'err');
     L.pos = p;
+    L.tAt.length = Math.min(L.tAt.length, p); // a retyped word is timed only if fully retyped
     L.typed = Math.max(0, L.typed - 1);
     updateCursor();
     renderKeymapHighlight();
@@ -836,6 +864,7 @@
     const S = trk(L.mode);
     S.lessons.push(rec);
     if (L.mode === 'mycode') state.mycode.pos = state.mycode.next || 0;
+    if (tracksWords(L.mode)) recordLessonWords(L);
     // Words lessons use the engine's 'adaptive' bookkeeping (rotation, stall counter),
     // except sentence lessons, which drill no single letter.
     const W = isWords(L.mode);
@@ -1017,6 +1046,12 @@
       .slice(0, 8);
     fill('letterList', letters.map((x) => x.ch + '   ' + pct(x.st.acc) + '   (' + x.st.n + ')' +
       (weakL.has(x.ch) ? '   ← in drills' : x.st.acc < LA ? '   needs more samples' : '')), 'Needs 5+ samples per letter.');
+    const drillW = new Set(ENGINE.drillWords(state, now));
+    fill('wordList', ENGINE.troubleWords(state, 10, now).map((x) => x.word + '   ' + pct(1 - x.miss) + '   ' +
+      (x.wpm ? Math.round(x.wpm) + ' wpm' : '–') + '   (' + x.n + ')' + (drillW.has(x.word) ? '   ← in drills' : '')),
+    Object.keys(state.tokens || {}).some((w) => ENGINE.wordStats(state, w, now).n >= ENGINE.CONST.WORD_MIN)
+      ? 'No trouble words: every word is clean and at target speed.'
+      : 'Needs ' + ENGINE.CONST.WORD_MIN + '+ samples per word.');
     fill('pairList', ENGINE.slowPairs(state, 8).map((p) => p.pair.replace(/ /g, '␣') + '   ' + p.median + ' ms   (' + p.n + ')'), 'Needs 5+ samples per pair.');
     $('fileInfo').textContent = FILES.server()
       ? 'Auto-saving after every lesson to data/progress.json and data/report.md.'
