@@ -10,6 +10,40 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-14: Practice minutes count active typing only
+
+Commit: see `git log --grep "active typing"`.
+
+### Why
+
+A lesson's time ran from its first keystroke to its last, so a lesson left
+open counted the whole pause. One saved Adaptive lesson (74 characters) took
+18.7 hours this way: 1,123 of the 1,131 minutes shown, and 0.0 WPM.
+
+### What changed
+
+| Area | Before | After | Where |
+|---|---|---|---|
+| Lesson time (`dur`) | wall clock, first to last keystroke | active typing: each gap between keystrokes (Backspace included) counts up to 3 s | `tick`, `finish` in `js/app.js`; `IDLE_CAP` in `js/engine.js` |
+| Lesson WPM | from wall-clock time | from active time (a pause no longer drops it) | `finish` |
+| Older lessons | read as saved | capped at characters × 3 s when summed (the same bound new lessons have); the saved data is not rewritten | `ENGINE.lessonMs`, `lessonMin` |
+| "Today" in the header | lessons of the mode on screen only | symbol and Words lessons together | `renderMetrics` |
+| Stats and report totals | sum of `dur` | `ENGINE.lessonMin` | `renderStats`, `renderWordsStats`, `js/report.js` |
+
+### Tests
+
+Browser pane, scratch copy: the saved data with the 18.7 h lesson now reads
+11.0 min (was 1,130.7); a 71-character lesson typed at 200 ms per key with a
+10-minute pause in the middle records 16,800 ms and 50.7 WPM (69 × 200 ms +
+3,000 ms); a Words lesson today adds to "Today"; no console errors.
+
+### Rollback / tweak
+
+- `git revert` the commit. Lessons recorded after it keep their active time.
+- Pause cap: `IDLE_CAP` in the typing-time block of `js/engine.js`.
+
+---
+
 ## 2026-11-11: Trouble words in code
 
 Commit: see `git log --grep "Trouble words"`.

@@ -213,7 +213,7 @@
       else lineStart = false;
     }
     lesson = {
-      text, mode: curMode(), pos: 0, auto, errorsAt: new Set(), start: null, lastT: null,
+      text, mode: curMode(), pos: 0, auto, errorsAt: new Set(), start: null, lastT: null, active: 0, lastKey: null,
       sameHand: 0, shifted: 0, done: false, typed: 0, perKey: {}, prevCh: null, focus: buildText.focus,
       sentences: buildText.sentences,
       // Words in code (Adaptive, Lines, My code): spans and when each character was typed.
@@ -685,7 +685,9 @@
     const all = trk().lessons;
     const L = last || all[all.length - 1];
     const today = new Date().toDateString();
-    const mins = all.filter((x) => new Date(x.ts).toDateString() === today).reduce((a, x) => a + (x.dur || 0), 0) / 60000;
+    // Today's typing time across every mode (symbol and Words saves).
+    const isToday = (x) => x && new Date(x.ts).toDateString() === today;
+    const mins = ENGINE.lessonMin(state.lessons.filter(isToday)) + ENGINE.lessonMin(words.lessons.filter(isToday));
     $('mToday').textContent = mins < 1 ? Math.round(mins * 60) + 's' : Math.round(mins) + 'm';
     if (!L) {
       $('mWpm').textContent = '–';
@@ -754,6 +756,7 @@
     SOUND.init();
     const now = performance.now();
     if (L.start === null) L.start = now;
+    tick(L, now);
     const exp = L.text[L.pos];
 
     const pk = (L.perKey[exp] = L.perKey[exp] || { n: 0, ok: 0, tSum: 0, tN: 0 });
@@ -817,9 +820,16 @@
     renderKeymapHighlight();
   }
 
+  // Active typing time: each gap between keystrokes counts up to ENGINE IDLE_CAP.
+  function tick(L, now) {
+    if (L.lastKey != null) L.active += Math.min(Math.max(0, now - L.lastKey), ENGINE.CONST.IDLE_CAP);
+    L.lastKey = now;
+  }
+
   function onBackspace() {
     const L = lesson;
     if (!L || L.done || state.settings.stopOnError || L.pos === 0) return;
+    if (L.start !== null) tick(L, performance.now());
     let p = L.pos - 1;
     while (p > 0 && L.auto.has(p)) p--;
     if (L.auto.has(p)) return;
@@ -835,7 +845,8 @@
     const L = lesson;
     L.done = true;
     const now = performance.now();
-    const dur = Math.max(1, now - L.start);
+    // Active typing time, not wall-clock: a lesson left open does not count.
+    const dur = Math.max(1, L.active);
     const chars = L.text.length - L.auto.size;
     if (L.mode === 'warmup') {
       // Nothing recorded: just move on to the next row of this finger.
@@ -1000,7 +1011,7 @@
     $('letterBlock').hidden = false;
     CHART.draw($('chart'), state.lessons);
     const all = state.lessons;
-    const totalMin = all.reduce((a, x) => a + (x.dur || 0), 0) / 60000;
+    const totalMin = ENGINE.lessonMin(all);
     const best = (m) => {
       const xs = all.filter((x) => x.mode === m);
       return xs.length ? Math.round(Math.max(...xs.map((x) => x.wpm))) : '–';
@@ -1079,7 +1090,7 @@
     $('letterBlock').hidden = true;
     CHART.draw($('chart'), W.lessons);
     const all = W.lessons;
-    const totalMin = all.reduce((a, x) => a + (x.dur || 0), 0) / 60000;
+    const totalMin = ENGINE.lessonMin(all);
     const best = all.length ? Math.round(Math.max(...all.map((x) => x.wpm))) : '–';
     const recent = all.slice(-20);
     const recentAcc = recent.length ? recent.reduce((a, x) => a + x.acc, 0) / recent.length : null;

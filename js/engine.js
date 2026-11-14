@@ -462,6 +462,19 @@
     return troubleWords(state, 50, now).filter((x) => x.score >= WORD_BAR && okWord(x.word)).slice(0, WORD_DRILL).map((x) => x.word);
   }
 
+  // ---------- typing time ----------
+  // A lesson's time is active typing: each gap between keystrokes counts up to
+  // IDLE_CAP, so leaving a lesson open does not add minutes. Lessons saved before
+  // this rule (wall-clock time) are capped the same way when read.
+  const IDLE_CAP = 3000;
+  function lessonMs(x) {
+    if (!x) return 0;
+    const d = Number.isFinite(x.dur) ? x.dur : 0;
+    const c = Number.isFinite(x.chars) && x.chars > 0 ? x.chars : 0;
+    return Math.max(0, Math.min(d, c * IDLE_CAP));
+  }
+  const lessonMin = (list) => (list || []).reduce((a, x) => a + lessonMs(x), 0) / 60000;
+
   // Plain-language unlock status, e.g. "= in 4 adaptive lessons".
   CTT.unlockText = function (u, next, noun, lessonNoun) {
     const ln = lessonNoun || 'adaptive lesson';
@@ -478,7 +491,9 @@
     unlockStatus, wilson,
     topConfusions, allConfusions, slowPairs,
     wordSpans, recordWord, pruneWords, wordStats, troubleWords, drillWords,
+    lessonMs, lessonMin,
     CONST: {
+      IDLE_CAP,
       WORD_HIST, WORD_CAP, WORD_MIN, WORD_DRILL, WORD_BAR, WORD_MAXLEN,
       DAY, HALF_LIFE_D, MAX_AGE_D, ACC_TARGET, INTERVALS, MIN_EFF, LETTER_ACC, LETTER_MIN, HIST, ATTEMPT_HALF,
       MASTER_BAR, Z_MASTER, DEMOTE_BAR, Z_DEMOTE, PASS_DAYS, DAY_ACC, STALL_LESSONS, STALL_FLOOR, MAX_NOT_GOOD,

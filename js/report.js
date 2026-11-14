@@ -23,7 +23,7 @@
     const in7 = L.filter((x) => now - x.ts < 7 * DAY);
     const prev7 = L.filter((x) => now - x.ts >= 7 * DAY && now - x.ts < 14 * DAY);
     const today = new Date().toDateString();
-    const mins = (list) => list.reduce((a, x) => a + (x.dur || 0), 0) / 60000;
+    const mins = (list) => ENGINE.lessonMin(list); // active typing time
     const C = ENGINE.CONST;
     const out = [];
 
@@ -139,7 +139,7 @@
     const out = ['## Words mode (separate from the symbol stats)', ''];
     const in7 = L.filter((x) => now - x.ts < 7 * DAY);
     const avg = (xs, k) => (xs.length ? xs.reduce((a, x) => a + x[k], 0) / xs.length : null);
-    out.push('- Lessons: ' + L.length + ' total, ' + in7.length + ' in the last 7 days; ' + num(L.reduce((a, x) => a + (x.dur || 0), 0) / 60000, 1) + ' min total');
+    out.push('- Lessons: ' + L.length + ' total, ' + in7.length + ' in the last 7 days; ' + num(ENGINE.lessonMin(L), 1) + ' min total');
     out.push('- Last 7 days: ' + num(avg(in7, 'wpm'), 1) + ' WPM, ' + pct(avg(in7, 'acc')) + ' accuracy');
     out.push('- Letters unlocked: ' + W.unlocked + '/' + order.length + ' (target ' + target + ' WPM per letter)');
     out.push('- Next unlock: ' + CTT.unlockText(ENGINE.unlockStatus(view, now), order[W.unlocked], 'letter', 'Words lesson'));
