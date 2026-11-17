@@ -241,7 +241,7 @@
 
   // ---------- Edit drill ----------
   // One planted mistake per round in a real text box; navigation keys are counted.
-  let editRound = null; // { r, start, keys, arrows, word, wl, wr, homeEnd, del, wordDel, mouse, done }
+  let editRound = null; // { r, start, keys, arrows, word, wl, wr, hm, en, homeEnd, del, wordDel, mouse, done }
   let editNextT = null;
   let editUnsynced = 0;
   function flushEdit() {
@@ -251,28 +251,49 @@
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden) flushEdit(); });
   window.addEventListener('pagehide', flushEdit);
-  // Put the caret back at the end of the line (before the first key of a round).
+  // Put the caret back where the round starts (before its first key): the end of
+  // the line, or its start for rounds built around End or a right jump.
   function editCaretEnd() {
     const inp = $('editInput');
     inp.focus();
-    inp.setSelectionRange(inp.value.length, inp.value.length);
+    const at = editRound && editRound.r.caret === 0 ? 0 : inp.value.length;
+    inp.setSelectionRange(at, at);
+  }
+  // The Caps Lock layer never reaches the page (the script sends arrow keys), so
+  // light Caps and the layer key for each editing key that arrives.
+  const CAPS_KEY = { ArrowLeft: ['KeyJ', 'KeyY'], ArrowRight: ['KeyL', 'KeyP'], ArrowUp: ['KeyI'], ArrowDown: ['KeyK'],
+    Home: ['KeyU'], End: ['KeyO'], Backspace: ['KeyH', 'KeyN'], Delete: ['Semicolon'] };
+  function flashCaps(e) {
+    const m = CAPS_KEY[e.key];
+    if (!m) return;
+    const code = (e.ctrlKey || e.metaKey) && m[1] ? m[1] : m[0];
+    ['k-CapsLock', 'k-' + code].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.classList.add('down', 'flash');
+      clearTimeout(el._flashT);
+      el._flashT = setTimeout(() => el.classList.remove('down', 'flash'), 220);
+    });
   }
   function setEditVisible(on) {
     $('editPanel').hidden = !on;
     $('textbox').hidden = on;
     $('typingHelp').hidden = on;
   }
+  // The edit save, with how many commands are unlocked.
   function editState() {
-    return (state.edit = state.edit && Array.isArray(state.edit.rounds) ? state.edit : { rounds: [] });
+    const ed = (state.edit = state.edit && Array.isArray(state.edit.rounds) ? state.edit : { rounds: [] });
+    if (!Number.isInteger(ed.unlocked) || ed.unlocked < 1) ed.unlocked = EDIT.START_UNLOCKED;
+    return ed;
   }
+  const editStats = () => EDIT.cmdStats(editState().rounds, editState().unlocked);
   function newEditRound() {
     clearTimeout(editNextT);
     const ed = editState();
     const conf = ENGINE.allConfusions(state, 10).map((c) => ({ expected: c.expected, typed: c.typed }));
-    // Most rounds practise the weaker word jump (the focus in the bar above).
-    const dir = EDIT.jumpStats(ed.rounds).focus;
-    const r = EDIT.round(CONTENT.LINES, { dir, confusions: conf, words: ENGINE.drillWords(state) });
-    editRound = { r, start: null, keys: 0, arrows: 0, word: 0, wl: 0, wr: 0, homeEnd: 0, del: 0, wordDel: 0, mouse: 0, done: false };
+    // Most rounds are built around the weakest command (the focus in the bar above).
+    const r = EDIT.round(CONTENT.LINES, { focus: editStats().focus, unlocked: ed.unlocked, confusions: conf, words: ENGINE.drillWords(state) });
+    editRound = { r, start: null, keys: 0, arrows: 0, word: 0, wl: 0, wr: 0, hm: 0, en: 0, homeEnd: 0, del: 0, wordDel: 0, mouse: 0, done: false };
     // Target line with the spot to fix highlighted.
     const t = $('editTarget');
     t.textContent = '';
@@ -288,11 +309,10 @@
     inp.classList.remove('solved');
     inp.value = r.shown;
     inp.readOnly = false;
-    if (view === 'practice' && !$('settings').open) {
-      inp.focus();
-      inp.setSelectionRange(r.shown.length, r.shown.length);
-    }
+    if (view === 'practice' && !$('settings').open) editCaretEnd();
     renderEditStats();
+    renderFocus();
+    renderKeymapHighlight();
   }
   function finishEditRound() {
     const E = editRound;
@@ -301,14 +321,18 @@
     const rec = {
       ts: Date.now(), kind: E.r.kind, ms, keys: E.keys, par: E.r.par,
       arrows: E.arrows, word: E.word, homeEnd: E.homeEnd, del: E.del, mouse: E.mouse,
-      dir: E.r.dir, wl: E.wl, wr: E.wr,
+      cmds: E.r.cmds, wl: E.wl, wr: E.wr, hm: E.hm, en: E.en, wordDel: E.wordDel,
     };
     const ed = editState();
     ed.rounds.push(rec);
     if (ed.rounds.length > EDIT.ROUNDS_KEPT) ed.rounds.splice(0, ed.rounds.length - EDIT.ROUNDS_KEPT);
+    // Every unlocked command used most of the time: the next one unlocks.
+    let unlocked = null;
+    if (editStats().canUnlock) unlocked = EDIT.CMDS[ed.unlocked++];
     // Saved in this browser every round; the server, folder and gist copies every
-    // 5 rounds and when leaving Edit or the page.
-    if (++editUnsynced >= 5) flushEdit();
+    // 5 rounds, on an unlock, and when leaving Edit or the page.
+    editUnsynced++;
+    if (unlocked || editUnsynced >= 5) flushEdit();
     else STORE.save(state);
     SOUND.complete();
     const inp = $('editInput');
@@ -323,10 +347,17 @@
       s.textContent = ' · ' + tip;
       fb.append(s);
     }
+    if (unlocked) {
+      const s = document.createElement('span');
+      s.className = 'unlock';
+      s.textContent = ' · New command: ' + unlocked.caps + ' (' + unlocked.key + ') · ' + unlocked.what;
+      fb.append(s);
+      SOUND.unlock();
+    }
     renderMetrics();
     renderStrip();
     renderFocus();
-    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, tip ? 1600 : 700);
+    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, unlocked ? 3000 : tip ? 1800 : 700);
   }
   function renderEditStats() {
     const R = (state.edit && state.edit.rounds) || [];
@@ -357,6 +388,7 @@
       $('editFeedback').textContent = '';
     }
     E.keys++;
+    flashCaps(e);
     const k = e.key;
     if (k === 'ArrowLeft' || k === 'ArrowRight') {
       if (e.ctrlKey || e.metaKey) {
@@ -364,7 +396,11 @@
         if (k === 'ArrowLeft') E.wl++;
         else E.wr++;
       } else E.arrows++;
-    } else if (k === 'Home' || k === 'End') E.homeEnd++;
+    } else if (k === 'Home' || k === 'End') {
+      E.homeEnd++;
+      if (k === 'Home') E.hm++;
+      else E.en++;
+    }
     else if (k === 'Backspace' || k === 'Delete') {
       E.del++;
       if (e.ctrlKey || e.altKey) E.wordDel++;
@@ -735,21 +771,28 @@
     strip.innerHTML = '';
     strip.classList.toggle('jumps', curMode() === 'edit');
     if (curMode() === 'edit') {
-      // Edit: the two word-jump commands instead of symbols; the bar is how often
-      // you used each one when it was the fastest way (last 20 such rounds).
-      const js = EDIT.jumpStats(editState().rounds);
-      EDIT.JUMPS.forEach((j) => {
-        const st = js[j.dir];
+      // Edit: the Caps Lock commands instead of symbols, unlocking in order like
+      // the symbols; the bar is how often you used each one in its last 10 rounds
+      // where it was the fastest way.
+      const cs = editStats();
+      EDIT.CMDS.forEach((c, i) => {
+        const st = cs.by[c.id];
+        const locked = i >= cs.unlocked;
         const d = document.createElement('div');
-        d.className = 'sym cmd' + (j.dir === js.focus ? ' focus' : '') + (st.n >= 5 && st.share >= 0.9 ? ' learned' : '');
+        d.className = 'sym cmd' + (locked ? ' locked' : '') + (!locked && c.id === cs.focus ? ' focus' : '') +
+          (!locked && st.n >= EDIT.UNLOCK.rounds && st.share >= EDIT.UNLOCK.share ? ' learned' : '');
         d.innerHTML = '<span class="k"></span><span class="c"></span>';
-        d.querySelector('.k').textContent = j.key;
-        d.querySelector('.c').textContent = j.caps;
-        const bar = document.createElement('div');
-        bar.className = 'bar';
-        bar.innerHTML = '<i style="width:' + Math.round(st.share * 100) + '%;background:' + confColor(st.share) + '"></i>';
-        d.appendChild(bar);
-        d.title = j.key + ' (' + j.caps + ') · ' + j.what + '\nused in ' + st.used + ' of the last ' + st.n + ' rounds where it was fastest';
+        d.querySelector('.k').textContent = c.caps;
+        d.querySelector('.c').textContent = c.key;
+        if (!locked) {
+          const bar = document.createElement('div');
+          bar.className = 'bar';
+          bar.innerHTML = '<i style="width:' + Math.round(st.share * 100) + '%;background:' + confColor(st.share) + '"></i>';
+          d.appendChild(bar);
+        }
+        d.title = locked
+          ? c.caps + ' (' + c.key + ') · ' + c.what + ' (locked)'
+          : c.caps + ' (' + c.key + ') · ' + c.what + '\nused in ' + st.used + ' of the last ' + st.n + ' rounds where it was fastest';
         strip.appendChild(d);
       });
       return;
@@ -780,9 +823,12 @@
     const el = $('focusLine');
     let html = '';
     if (curMode() === 'edit') {
-      const js = EDIT.jumpStats(editState().rounds);
-      const j = EDIT.JUMPS.find((x) => x.dir === js.focus);
-      html = 'Focus <b>' + j.key + '</b> (' + j.caps + ') · ' + j.what + ' · the cursor starts at the end · not counted in WPM or key stats';
+      const c = EDIT.BY_ID[editStats().focus];
+      html = 'Focus <b>' + c.caps + '</b> (' + c.key + ') · ' + c.what;
+      if (editRound && !editRound.done) {
+        html += ' · this round: <b>' + editRound.r.cmds.map((id) => EDIT.BY_ID[id].caps).join(' then ') + '</b>, cursor at the ' +
+          (editRound.r.caret === 0 ? 'start' : 'end');
+      }
     } else if (isWords() && lesson && lesson.sentences) {
       html = 'Sentences · all letters unlocked · capitals and punctuation are not counted';
     } else if (curMode() === 'adaptive' || isWords()) {
@@ -853,6 +899,14 @@
   function renderKeymapHighlight() {
     document.querySelectorAll('.key.next, .key.nextshift').forEach((k) => k.classList.remove('next', 'nextshift'));
     document.querySelectorAll('.legend span.on').forEach((s) => s.classList.remove('on'));
+    if (curMode() === 'edit') {
+      // The round's first command: its layer key, with Caps Lock held.
+      if (!state.settings.highlightNext || !editRound || editRound.done || !editRound.r.cmds.length) return;
+      const c = EDIT.BY_ID[editRound.r.cmds[0]];
+      if ($('k-' + c.code)) $('k-' + c.code).classList.add('next');
+      if ($('k-CapsLock')) $('k-CapsLock').classList.add('nextshift');
+      return;
+    }
     if (!state.settings.highlightNext || !lesson || lesson.done) return;
     const ch = lesson.text[lesson.pos];
     const m = LAYOUT.charMap[ch];
@@ -886,12 +940,14 @@
     const edit = curMode() === 'edit';
     $('mWpmL').textContent = edit ? 'Fix time' : 'WPM';
     $('mAccL').textContent = edit ? 'Keys vs best' : 'Accuracy';
-    $('mShiftL').textContent = edit ? 'Word jumps' : 'Same-hand Shift';
+    const fc = edit ? EDIT.BY_ID[editStats().focus] : null;
+    $('mShiftL').textContent = edit ? fc.caps + ' used' : 'Same-hand Shift';
     if (edit) {
       const s = EDIT.summary(editState().rounds, 20);
+      const st = editStats().by[fc.id];
       $('mWpm').textContent = s.medMs == null ? '–' : (s.medMs / 1000).toFixed(1) + 's';
       $('mAcc').textContent = s.medRatio == null ? '–' : s.medRatio.toFixed(1) + '×';
-      $('mShift').textContent = s.wordShare == null ? '–' : Math.round(s.wordShare * 100) + '%';
+      $('mShift').textContent = st.n ? Math.round(st.share * 100) + '%' : '–';
       ['mWpmD', 'mAccD'].forEach((id) => { $(id).textContent = ''; $(id).className = 'delta'; });
       return;
     }

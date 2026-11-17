@@ -53,16 +53,22 @@ works, without automatic saving.
   and back (`;p ;p p;`), row by row: home row, top row, bottom row, number
   row, then a mix. The keyboard dims every other finger's keys. Nothing is
   recorded: no stats, no mix-ups, no progress changes.
-- **Edit** (next to Adaptive): a word-jump drill. Fix one planted mistake in
-  a line of real Python (a swapped symbol from your own mix-ups, a missing `)`
-  or `:`, an extra character, or two swapped letters in a name), always placed
-  where `Ctrl+←/→` saves at least 3 keys over arrows or Home. The cursor
-  starts at the end of the line, in a real text box, as in an interview
-  editor. The symbol bar shows the two commands instead: `Ctrl ←` (from the
-  end) and `Ctrl →` (after Home), each with a bar for how often you used it in
-  its last 20 rounds where it was fastest. The weaker one is the focus and
-  gets about 2 rounds in 3. The metrics row shows fix time, keys vs best and
-  word-jump share. Not counted in WPM or key stats; the time counts in "Today".
+- **Edit** (next to Adaptive): Adaptive for the Caps Lock editing commands
+  (`extras/caps-arrows.ahk`). Each round plants one mistake in a line of real
+  Python (a swapped symbol from your own mix-ups, a missing `)` or `:`, an
+  extra character, two swapped letters, or a wrong name) and is built around
+  one command: the best way must use it, save 3+ keys and take at most 10.
+  The symbol bar shows the commands instead of symbols, Caps name first:
+  `Caps+Y` (Ctrl ←) and `Caps+P` (Ctrl →) to start, then `Caps+U` (Home),
+  `Caps+O` (End) and `Caps+N` (Ctrl+Backspace) unlock in turn once every
+  unlocked command is used in 80%+ of its last 5–10 rounds where it was
+  fastest. The weakest is the focus and gets about 2 rounds in 3; rounds for
+  `Caps+P` and `Caps+O` start with the cursor at the start of the line. The
+  drawn keyboard lights Caps and the round's key, and flashes the layer key
+  for every editing key you press (the browser cannot tell Caps+Y from a real
+  Ctrl+←, so either counts). The metrics row shows fix time, keys vs best and
+  the focus command's share. Not counted in WPM or key stats; the time counts
+  in "Today".
 - **Home-row arrows** (optional, Windows): `extras/caps-arrows.ahk` is an
   AutoHotkey v2 script. Hold Caps Lock and use `I J K L` as arrows, `U`/`O`
   as Home/End, `H`/`;` as Backspace/Delete, `Y`/`P` to jump a word and `N`

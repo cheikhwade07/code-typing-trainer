@@ -31,7 +31,7 @@
       lessons: [],
       mycode: { text: '', pos: 0 },
       tokens: {}, // word in code -> [[ms (0 miss, -1 untimed), ts]]
-      edit: { rounds: [] }, // Edit drill: [{ts, kind, ms, keys, par, arrows, word, homeEnd, del, mouse, dir, wl, wr}]
+      edit: { rounds: [], unlocked: 2 }, // Edit drill: rounds [{ts, kind, ms, keys, par, cmds, arrows, word, wl, wr, hm, en, homeEnd, del, wordDel, mouse}], commands unlocked
     };
   }
 

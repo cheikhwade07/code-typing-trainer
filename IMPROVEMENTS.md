@@ -10,6 +10,48 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-17: Edit as Adaptive for the Caps Lock commands
+
+Commit: see `git log --grep "Caps Lock commands"`.
+
+### Why
+
+The word-jump drill had only two commands, named them by Ctrl, and the drawn
+keyboard never reacted to the Caps layer (the script swallows Caps Lock and
+sends arrow keys, which the drawn keyboard does not have). A page could also
+load old and new scripts together for up to 10 minutes after a deploy, which
+left Edit blank.
+
+### What changed
+
+| Area | Before | After | Where |
+|---|---|---|---|
+| Commands | Ctrl ← / Ctrl → | `Caps+Y`, `Caps+P` unlocked; `Caps+U`, `Caps+O`, `Caps+N` unlock in order when every unlocked one is used in 80%+ of its last 10 rounds where it was fastest (5+ such rounds) | `CMDS`, `UNLOCK`, `cmdStats` in `js/edit.js` |
+| Rounds | word jumps save 3+ keys | built around one command (the focus 65%, else any unlocked): the best way with the unlocked commands uses it, saves 3+ keys over the best way without it, and takes at most 10 keys; `Caps+P` and `Caps+O` rounds start with the cursor at the start; `Caps+N` rounds replace a whole name | `round`, `bestWay`, `moves`, `MAX_PAR` |
+| Symbol bar | 2 chips, Ctrl name first | 5 chips, Caps name first, locked ones dashed, bar = share used in last 10 such rounds, focus outlined | `renderStrip` |
+| Keyboard | no reaction to the Caps layer | Caps and the round's first command key lit (like next key + Shift); Caps and the layer key flash for every editing key | `renderKeymapHighlight`, `flashCaps` |
+| Focus line / metrics | word jump | focus command, this round's commands and where the cursor starts; third metric is the focus command's share | `renderFocus`, `renderMetrics` |
+| Tips | word jumps only | the best way in Caps form when you skipped one of its commands | `tip` |
+| Median | upper middle for even counts | mean of the two middle values | `summary` |
+| Save | `dir`, `wl`, `wr` | + `cmds`, `hm`, `en`, `wordDel`; `edit.unlocked`; word-jump rounds load as `Y` or `U`+`P` | `EDIT.clean` |
+| Deploys | files cached separately | `?v=` on every script and the stylesheet (change it with each JS/CSS deploy) | `index.html` |
+
+### Tests
+
+Scratch copy in the browser: 300 rounds per command (all use it, right
+cursor start, best 10 keys or fewer, no fallbacks), no locked command in
+rounds with 2 unlocked, focus share about 80%, `cmdStats` focus and unlock,
+`clean` of word-jump rounds, a `Caps+P` round fixed with real Ctrl+→ in Chrome
+(cursor matched `wordStops`, Caps and P flashed), no horizontal overflow.
+
+### Rollback / tweak
+
+- `git revert` the commit.
+- `MIN_GAIN`, `MAX_PAR`, `FOCUS_SHARE`, `WINDOW`, `UNLOCK`, `START_UNLOCKED`
+  in `js/edit.js`.
+
+---
+
 ## 2026-11-17: Edit becomes a word-jump drill
 
 Commit: see `git log --grep "word-jump drill"`.

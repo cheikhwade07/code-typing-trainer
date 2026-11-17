@@ -187,9 +187,11 @@ input.edit-line.solved { border-color: var(--good); }
 .edit a { color: var(--accent); }
 /* Edit: word-jump commands in the symbol bar */
 #keystrip.jumps { gap: 12px; }
-.sym.cmd { width: auto; min-width: 96px; padding: 0 14px 6px; height: 46px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; }
+.sym.cmd { width: auto; min-width: 92px; padding: 0 14px 6px; height: 46px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; }
 .sym.cmd .k { font-size: 16px; line-height: 1.1; }
 .sym.cmd .c { font-size: 11px; color: var(--muted); line-height: 1.1; }
+.sym.cmd.locked .c { color: var(--typed); }
+.kb .key.flash { box-shadow: 0 0 0 2px var(--accent); }
 @media (max-width: 640px) {
   .edit-row { flex-direction: column; align-items: stretch; gap: 4px; }
   .edit-label { width: auto; text-align: left; }

@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Code Typing Trainer</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=20261117c">
 </head>
 <body>
   <header class="top">
     <div class="brand"><span class="logo">{ }</span> Code Typing Trainer</div>
     <nav class="modes" aria-label="Mode">
       <button data-mode="adaptive" title="Adaptive symbol drills, keybr-style">Adaptive</button>
-      <button data-mode="edit" title="Fix a planted mistake by jumping words with Ctrl+Left/Right">Edit</button>
+      <button data-mode="edit" title="Fix a planted mistake with the Caps Lock editing commands">Edit</button>
       <button data-mode="lines" title="Real Python lines weighted toward your weak keys">Lines</button>
       <button data-mode="mycode" title="Retype your own code">My code</button>
       <button data-mode="words" title="Letters unlock one at a time, keybr-style, with AI/ML words. Separate stats.">Words</button>
@@ -52,7 +52,7 @@
       <div class="edit-row"><span class="edit-label">Should be</span><div id="editTarget" class="edit-line"></div></div>
       <div class="edit-row"><span class="edit-label">Fix this</span><input id="editInput" class="edit-line" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Line to fix"></div>
       <p id="editFeedback" class="edit-feedback"></p>
-      <p class="help muted">The cursor starts at the end of the line. <kbd>Ctrl</kbd>+<kbd>←</kbd> jumps a word left · near the start: <kbd>Home</kbd>, then <kbd>Ctrl</kbd>+<kbd>→</kbd> · <kbd>Esc</kbd> skip · Caps+Y / P / U need the home-row script: <a href="https://github.com/cheikhwade07/code-typing-trainer/blob/main/extras/caps-arrows.ahk" target="_blank" rel="noopener">caps-arrows.ahk</a></p>
+      <p class="help muted">Hold <kbd>Caps</kbd>: <kbd>Y</kbd>/<kbd>P</kbd> jump a word · <kbd>U</kbd>/<kbd>O</kbd> line start/end · <kbd>N</kbd> delete a word · <kbd>J</kbd>/<kbd>L</kbd> one character · <kbd>H</kbd>/<kbd>;</kbd> delete · <kbd>Esc</kbd> skip · needs the home-row script: <a href="https://github.com/cheikhwade07/code-typing-trainer/blob/main/extras/caps-arrows.ahk" target="_blank" rel="noopener">caps-arrows.ahk</a></p>
       <div id="editStats" class="summary"></div>
     </section>
 
@@ -177,17 +177,19 @@
     </form>
   </dialog>
 
-  <script src="js/layout.js"></script>
-  <script src="js/content.js"></script>
-  <script src="js/words.js"></script>
-  <script src="js/engine.js"></script>
-  <script src="js/edit.js"></script>
-  <script src="js/store.js"></script>
-  <script src="js/sound.js"></script>
-  <script src="js/chart.js"></script>
-  <script src="js/files.js"></script>
-  <script src="js/report.js"></script>
-  <script src="js/sync.js"></script>
-  <script src="js/app.js"></script>
+  <!-- GitHub Pages caches each file for 10 minutes: change ?v= (here and on style.css) on every
+       deploy that changes JS or CSS, so a page never mixes old and new files. -->
+  <script src="js/layout.js?v=20261117c"></script>
+  <script src="js/content.js?v=20261117c"></script>
+  <script src="js/words.js?v=20261117c"></script>
+  <script src="js/engine.js?v=20261117c"></script>
+  <script src="js/edit.js?v=20261117c"></script>
+  <script src="js/store.js?v=20261117c"></script>
+  <script src="js/sound.js?v=20261117c"></script>
+  <script src="js/chart.js?v=20261117c"></script>
+  <script src="js/files.js?v=20261117c"></script>
+  <script src="js/report.js?v=20261117c"></script>
+  <script src="js/sync.js?v=20261117c"></script>
+  <script src="js/app.js?v=20261117c"></script>
 </body>
 </html>

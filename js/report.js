@@ -99,10 +99,10 @@
       out.push('- Used word jumps: ' + pct(es.wordShare) + '; used the mouse: ' + pct(es.mouseShare));
       const kinds = Object.entries(es.byKind).map(([k, v]) => CTT.EDIT.KIND_NAMES[k] + ' ' + num(v.medMs / 1000, 1) + ' s (' + v.n + ')');
       if (kinds.length) out.push('- By kind (median): ' + kinds.join(', '));
-      const js = CTT.EDIT.jumpStats(ER);
-      CTT.EDIT.JUMPS.forEach((j) => {
-        const s = js[j.dir];
-        out.push('- ' + j.key + ' (' + j.caps + '): used in ' + s.used + ' of the last ' + s.n + ' rounds where it was fastest' + (j.dir === js.focus ? ' (focus)' : ''));
+      const cs = CTT.EDIT.cmdStats(ER, state.edit.unlocked);
+      CTT.EDIT.CMDS.forEach((c, i) => {
+        const s = cs.by[c.id];
+        out.push('- ' + c.caps + ' (' + c.key + '): ' + (i >= cs.unlocked ? 'locked' : 'used in ' + s.used + ' of the last ' + s.n + ' rounds where it was fastest' + (c.id === cs.focus ? ' (focus)' : '')));
       });
       out.push('');
     }
