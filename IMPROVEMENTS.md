@@ -10,6 +10,41 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-16: Edit drill and home-row arrows
+
+Commit: see `git log --grep "Edit drill"`.
+
+### Why
+
+In coding assessments, fixing a typo means moving the cursor back, and long
+runs of arrow presses are slow. The trainer only trained forward typing.
+
+### What changed
+
+| Area | Before | After | Where |
+|---|---|---|---|
+| Modes | Adaptive, Lines, My code, Words, Warmup | + Edit: one planted mistake per round in a Lines line; kinds swap (your top mix-ups first, then common pairs), missing symbol, extra character, two swapped letters; never in the last 15% of the line; lines with trouble words preferred 40% of the time | `js/edit.js`; `newEditRound`, `finishEditRound` in `js/app.js`; `#editPanel` in `index.html` |
+| Measured per round | – | time from the first key, keys pressed, plain arrows, word jumps (Ctrl/Alt+arrow), Home/End, deletes, mouse clicks inside the focused box; "best about" = fewest keys on the line as shown (word jumps from the end, or Home then word jumps, plus single arrows, plus the fewest keys for the fix); lines of 18–64 characters | `navPar`, `tip` |
+| Main save | – | `edit: { rounds: [...] }`, last 300 rounds; cleaned on load; not in `lessons`, so WPM, charts and key stats are unchanged. Saved in the browser every round, to the server/folder/gist every 5 rounds and when leaving Edit or the page | `EDIT.clean`, `ROUNDS_KEPT`; `flushEdit` |
+| Mode switch | – | Edit is device-local (`ctt.edit.active`), like Words, so the synced save never holds mode `edit`; a save with a mode this build does not know opens Adaptive | `STORE.editActive`, `merge` |
+| Keys | – | only editing keys are taken from the page (browser shortcuts still work); a click that only focuses the box puts the caret at the end; Alt+Left/Right (browser Back) blocked; paste and drop blocked | `js/app.js` Edit block |
+| Today / report | – | Edit time counts in "Today" (at most 60 s per round); report section "Edit drill" (median time, keys vs best, word-jump and mouse share, median by kind) | `renderMetrics`, `js/report.js` |
+| Extras | – | `extras/caps-arrows.ahk`: Caps Lock + IJKL arrows, U/O Home/End, H/; Backspace/Delete | linked from the Edit panel |
+
+### Tests
+
+`tests/edit-drill/results.md`.
+
+### Rollback / tweak
+
+- `git revert` the commit. A save with `edit` is kept by older builds (their
+  merge keeps unknown fields). The device flag `ctt.edit.active` left in a
+  browser is ignored by older builds.
+- Kinds and pairs: `KINDS`, `PAIRS`, `MISSABLE` in `js/edit.js`; delay to
+  the next round in `finishEditRound`.
+
+---
+
 ## 2026-11-14: Practice minutes count active typing only
 
 Commit: see `git log --grep "active typing"`.

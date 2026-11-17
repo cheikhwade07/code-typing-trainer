@@ -1,6 +1,6 @@
 // Main controller: lessons, typing loop, rendering, settings, stats view.
 (function () {
-  const { LAYOUT, CONTENT, ENGINE, STORE, SOUND, CHART, FILES, REPORT, SYNC, WORDS } = window.CTT;
+  const { LAYOUT, CONTENT, ENGINE, STORE, SOUND, CHART, FILES, REPORT, SYNC, WORDS, EDIT } = window.CTT;
   const $ = (id) => document.getElementById(id);
 
   let state = STORE.load();
@@ -9,7 +9,8 @@
   let words = STORE.loadWords();
   let wordsOn = STORE.wordsActive(); // device-local: which mode is on screen
   let serverWords = false; // server.py knows data/words.json
-  const curMode = () => (wordsOn ? 'words' : state.mode);
+  let editOn = STORE.editActive(); // device-local, like Words
+  const curMode = () => (wordsOn ? 'words' : editOn ? 'edit' : state.mode);
   let lesson = null;
   let spans = [];
   const shiftsDown = new Set();
@@ -190,6 +191,19 @@
   }
 
   function newLesson() {
+    if (curMode() === 'edit') {
+      // Edit drill: its own panel; no typing lesson runs.
+      $('mycodePanel').hidden = true;
+      renderWarmupPanel();
+      renderWarmKeys();
+      lesson = null;
+      setEditVisible(true);
+      newEditRound();
+      renderFocus();
+      renderKeymapHighlight();
+      return;
+    }
+    setEditVisible(false);
     buildText.focus = null;
     buildText.sentences = false;
     const text = buildText();
@@ -224,6 +238,148 @@
     renderFocus();
     renderKeymapHighlight();
   }
+
+  // ---------- Edit drill ----------
+  // One planted mistake per round in a real text box; navigation keys are counted.
+  let editRound = null; // { r, start, keys, arrows, word, homeEnd, del, wordDel, mouse, done }
+  let editNextT = null;
+  let editUnsynced = 0;
+  function flushEdit() {
+    if (!editUnsynced) return;
+    editUnsynced = 0;
+    persist();
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushEdit(); });
+  window.addEventListener('pagehide', flushEdit);
+  // Put the caret back at the end of the line (before the first key of a round).
+  function editCaretEnd() {
+    const inp = $('editInput');
+    inp.focus();
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
+  function setEditVisible(on) {
+    $('editPanel').hidden = !on;
+    $('textbox').hidden = on;
+    $('typingHelp').hidden = on;
+  }
+  function newEditRound() {
+    clearTimeout(editNextT);
+    const conf = ENGINE.allConfusions(state, 10).map((c) => ({ expected: c.expected, typed: c.typed }));
+    const r = EDIT.round(CONTENT.LINES, { confusions: conf, words: ENGINE.drillWords(state) });
+    editRound = { r, start: null, keys: 0, arrows: 0, word: 0, homeEnd: 0, del: 0, wordDel: 0, mouse: 0, done: false };
+    // Target line with the spot to fix highlighted.
+    const t = $('editTarget');
+    t.textContent = '';
+    const a = r.target.slice(0, r.pos);
+    const fixLen = r.kind === 'typo' ? 2 : 1;
+    const b = r.target.slice(r.pos, r.kind === 'extra' ? r.pos + 1 : r.pos + fixLen);
+    const c = r.target.slice(a.length + b.length);
+    t.append(document.createTextNode(a));
+    const mark = document.createElement('span');
+    mark.className = 'fix';
+    mark.textContent = b;
+    t.append(mark, document.createTextNode(c));
+    const inp = $('editInput');
+    inp.classList.remove('solved');
+    inp.value = r.shown;
+    inp.readOnly = false;
+    if (view === 'practice' && !$('settings').open) {
+      inp.focus();
+      inp.setSelectionRange(r.shown.length, r.shown.length);
+    }
+    renderEditStats();
+  }
+  function finishEditRound() {
+    const E = editRound;
+    E.done = true;
+    const ms = Math.round(Math.max(0, performance.now() - (E.start == null ? performance.now() : E.start)));
+    const rec = {
+      ts: Date.now(), kind: E.r.kind, ms, keys: E.keys, par: E.r.par,
+      arrows: E.arrows, word: E.word, homeEnd: E.homeEnd, del: E.del, mouse: E.mouse,
+    };
+    const ed = (state.edit = state.edit && Array.isArray(state.edit.rounds) ? state.edit : { rounds: [] });
+    ed.rounds.push(rec);
+    if (ed.rounds.length > EDIT.ROUNDS_KEPT) ed.rounds.splice(0, ed.rounds.length - EDIT.ROUNDS_KEPT);
+    // Saved in this browser every round; the server, folder and gist copies every
+    // 5 rounds and when leaving Edit or the page.
+    if (++editUnsynced >= 5) flushEdit();
+    else STORE.save(state);
+    SOUND.complete();
+    const inp = $('editInput');
+    inp.classList.add('solved');
+    inp.readOnly = true;
+    const tip = EDIT.tip(E.r, { ...E });
+    const fb = $('editFeedback');
+    fb.textContent = (ms / 1000).toFixed(1) + ' s · ' + E.keys + (E.keys === 1 ? ' key' : ' keys') + ' (best about ' + E.r.par + ')';
+    if (tip) {
+      const s = document.createElement('span');
+      s.className = 'tip';
+      s.textContent = ' · ' + tip;
+      fb.append(s);
+    }
+    renderMetrics();
+    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, tip ? 1600 : 700);
+  }
+  function renderEditStats() {
+    const R = (state.edit && state.edit.rounds) || [];
+    const s = EDIT.summary(R, 50);
+    const el = $('editStats');
+    if (!s.n) { el.innerHTML = '<div class="wide muted">Your last 50 rounds will show here.</div>'; return; }
+    const pctS = (x) => (x == null ? '–' : Math.round(x * 100) + '%');
+    const slow = Object.entries(s.byKind).filter(([, v]) => v.n >= 3).sort((a, b) => b[1].medMs - a[1].medMs)[0];
+    el.innerHTML =
+      '<div><b>' + s.n + '</b>rounds (last 50)</div>' +
+      '<div><b>' + (s.medMs == null ? '–' : (s.medMs / 1000).toFixed(1) + 's') + '</b>median fix time</div>' +
+      '<div><b>' + (s.medRatio == null ? '–' : s.medRatio.toFixed(1) + '×') + '</b>keys vs best</div>' +
+      '<div><b>' + pctS(s.wordShare) + '</b>used word jumps or Home/End</div>' +
+      '<div><b>' + pctS(s.mouseShare) + '</b>used the mouse</div>' +
+      (slow ? '<div><b>' + escHtml(EDIT.KIND_NAMES[slow[0]]) + '</b>slowest kind</div>' : '');
+  }
+  $('editInput').addEventListener('keydown', (e) => {
+    const E = editRound;
+    if (e.key === 'Escape') { e.preventDefault(); newEditRound(); return; }
+    if (!E || E.done) { if (e.key !== 'Tab' && !e.ctrlKey && !e.metaKey && !/^F\d+$/.test(e.key)) e.preventDefault(); return; }
+    if (e.isComposing || e.key === 'Process') return;
+    if (e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); return; }
+    // Alt+Left/Right is browser Back/Forward on Windows: blocked here, not counted.
+    if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); return; }
+    if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) return;
+    if (E.start === null) {
+      E.start = performance.now();
+      $('editFeedback').textContent = '';
+    }
+    E.keys++;
+    const k = e.key;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      if (e.ctrlKey || e.metaKey) E.word++;
+      else E.arrows++;
+    } else if (k === 'Home' || k === 'End') E.homeEnd++;
+    else if (k === 'Backspace' || k === 'Delete') {
+      E.del++;
+      if (e.ctrlKey || e.altKey) E.wordDel++;
+    }
+  });
+  $('editInput').addEventListener('mousedown', (e) => {
+    // A click that only puts the focus back in the box does not move the caret
+    // (it goes to the end before the first key, or stays where it was).
+    if (document.activeElement !== $('editInput')) {
+      e.preventDefault();
+      if (editRound && !editRound.done && editRound.keys === 0) editCaretEnd();
+      else $('editInput').focus();
+      return;
+    }
+    // A click inside the focused box moves the caret: counted as mouse use.
+    if (editRound && !editRound.done) {
+      editRound.mouse++;
+      if (editRound.start === null) editRound.start = performance.now();
+    }
+  });
+  // No paste or drag-and-drop: the line must be fixed with the keyboard.
+  ['paste', 'drop'].forEach((ev) => $('editInput').addEventListener(ev, (e) => e.preventDefault()));
+  $('editInput').addEventListener('input', () => {
+    const E = editRound;
+    if (E && !E.done && $('editInput').value === E.r.target) finishEditRound();
+  });
 
   function skipAuto() {
     while (lesson.pos < lesson.text.length && lesson.auto.has(lesson.pos)) lesson.pos++;
@@ -591,7 +747,9 @@
   function renderFocus(extra) {
     const el = $('focusLine');
     let html = '';
-    if (isWords() && lesson && lesson.sentences) {
+    if (curMode() === 'edit') {
+      html = 'Edit · fix the mistake · the cursor starts at the end · not counted in WPM or key stats';
+    } else if (isWords() && lesson && lesson.sentences) {
       html = 'Sentences · all letters unlocked · capitals and punctuation are not counted';
     } else if (curMode() === 'adaptive' || isWords()) {
       const p = ENGINE.plan(trk());
@@ -687,7 +845,8 @@
     const today = new Date().toDateString();
     // Today's typing time across every mode (symbol and Words saves).
     const isToday = (x) => x && new Date(x.ts).toDateString() === today;
-    const mins = ENGINE.lessonMin(state.lessons.filter(isToday)) + ENGINE.lessonMin(words.lessons.filter(isToday));
+    const editMs = ((state.edit && state.edit.rounds) || []).filter(isToday).reduce((a, r) => a + Math.min(r.ms || 0, 60000), 0);
+    const mins = ENGINE.lessonMin(state.lessons.filter(isToday)) + ENGINE.lessonMin(words.lessons.filter(isToday)) + editMs / 60000;
     $('mToday').textContent = mins < 1 ? Math.round(mins * 60) + 's' : Math.round(mins) + 'm';
     if (!L) {
       $('mWpm').textContent = '–';
@@ -913,6 +1072,19 @@
     if ($('settings').open || view !== 'practice') return;
     const tag = (document.activeElement && document.activeElement.tagName) || '';
     if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+    if (curMode() === 'edit') {
+      // Keys go to the line being fixed; bring the focus back to it.
+      if (e.key === 'Escape') { e.preventDefault(); newEditRound(); return; }
+      // Only editing keys are taken (browser shortcuts like F5 or Ctrl+R still work).
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const editKey = e.key.length === 1 || ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Backspace', 'Delete'].includes(e.key);
+      if (editKey && editRound && !editRound.done) {
+        e.preventDefault();
+        if (editRound.keys === 0) editCaretEnd();
+        else $('editInput').focus();
+      }
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'Escape') { e.preventDefault(); newLesson(); return; }
     if (e.key === 'Backspace') { e.preventDefault(); onBackspace(); return; }
@@ -935,16 +1107,22 @@
   });
 
   function setMode(mode) {
-    if (mode === 'words') {
-      // Device-local switch: no save, so the symbol progress is untouched.
-      wordsOn = true;
-      STORE.setWordsActive(true);
+    const leavingEdit = editOn && mode !== 'edit';
+    if (mode === 'words' || mode === 'edit') {
+      // Device-local switches: no save, so the symbol progress is untouched.
+      wordsOn = mode === 'words';
+      editOn = mode === 'edit';
+      STORE.setWordsActive(wordsOn);
+      STORE.setEditActive(editOn);
     } else {
       wordsOn = false;
+      editOn = false;
       STORE.setWordsActive(false);
+      STORE.setEditActive(false);
       state.mode = mode;
       persist();
     }
+    if (leavingEdit) flushEdit();
     document.querySelectorAll('.modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === curMode()));
     $('mycodePanel').dataset.open = '0';
     guardWords(() => {
@@ -978,6 +1156,12 @@
     $('practice').hidden = v !== 'practice';
     $('statsView').hidden = v !== 'stats';
     $('statsBtn').textContent = v === 'stats' ? 'Practice' : 'Stats';
+    if (v === 'practice' && curMode() === 'edit' && editRound) {
+      // Back from Stats: a solved round moves on; an open one gets the focus back.
+      if (editRound.done) newEditRound();
+      else if (editRound.keys === 0) editCaretEnd();
+      else $('editInput').focus();
+    }
     if (v === 'stats') {
       // Stats open on the current mode's stats; the other is one click away.
       statsFor = isWords() ? 'words' : 'symbols';

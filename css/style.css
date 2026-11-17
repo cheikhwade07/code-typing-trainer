@@ -120,7 +120,10 @@ main { max-width: 980px; margin: 0 auto; padding: 8px 16px 40px; }
 .row-inline { display: flex; gap: 6px; }
 .small { font-size: 12px; font-weight: 400; }
 .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-@media (max-width: 640px) { .twocol { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .twocol { grid-template-columns: 1fr; }
+  .modes { flex-wrap: wrap; }
+}
 ul.plain { list-style: none; padding: 0; margin: 0; font-family: var(--font-code); font-size: 15px; white-space: pre; }
 ul.plain li { padding: 5px 0; border-bottom: 1px solid var(--grid); }
 .toast { max-width: calc(100vw - 32px); text-align: center; }
@@ -163,6 +166,30 @@ ul.plain li { padding: 5px 0; border-bottom: 1px solid var(--grid); }
 .textbox .cur { box-shadow: inset 0 -3px 0 var(--accent); background: var(--accent-soft); }
 .textbox .cur.bad { background: var(--err-soft); box-shadow: inset 0 -3px 0 var(--err); transition: background 0.12s; }
 .help { text-align: center; font-size: 12px; margin: 10px 0 20px; }
+
+/* Edit drill: target line above, editable line below, same font and padding so columns line up */
+.edit { background: var(--panel); border-radius: 14px; padding: 20px 24px; margin-bottom: 14px; }
+.edit-row { display: flex; align-items: center; gap: 14px; margin: 6px 0; }
+.edit-label { width: 72px; flex: none; color: var(--muted); font-size: 12px; text-align: right; }
+.edit-line {
+  flex: 1; min-width: 0; box-sizing: border-box;
+  font-family: var(--font-code); font-size: clamp(14px, 1.9vw, 20px); line-height: 1.5;
+  padding: 8px 12px; border: 1px solid var(--grid); border-radius: 8px;
+  background: var(--panel-2); color: var(--text); white-space: pre; overflow-x: auto;
+}
+div.edit-line { color: var(--text); user-select: none; }
+div.edit-line .fix { color: var(--good); background: var(--accent-soft); border-radius: 3px; }
+input.edit-line { outline: none; }
+input.edit-line:focus { border-color: var(--accent); }
+input.edit-line.solved { border-color: var(--good); }
+.edit-feedback { min-height: 1.4em; margin: 8px 0 0 86px; font-size: 14px; }
+.edit-feedback .tip { color: var(--accent); }
+.edit a { color: var(--accent); }
+@media (max-width: 640px) {
+  .edit-row { flex-direction: column; align-items: stretch; gap: 4px; }
+  .edit-label { width: auto; text-align: left; }
+  .edit-feedback { margin-left: 0; }
+}
 
 /* My code panel */
 #mycodePanel { margin-bottom: 14px; }

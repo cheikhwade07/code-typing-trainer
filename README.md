@@ -53,6 +53,17 @@ works, without automatic saving.
   and back (`;p ;p p;`), row by row: home row, top row, bottom row, number
   row, then a mix. The keyboard dims every other finger's keys. Nothing is
   recorded: no stats, no mix-ups, no progress changes.
+- **Edit**: fix one planted mistake in a line of real Python (a swapped
+  symbol from your own mix-ups, a missing `)` or `:`, an extra character, or
+  two swapped letters in a name). The cursor starts at the end of the line,
+  in a real text box, so `Ctrl+←/→`, `Home`/`End` and `Ctrl+Backspace` work
+  as in an interview editor. Each round shows the time, the keys used against
+  about the fewest possible, and a tip (for example "Ctrl+Left jumps a word").
+  The panel and the report show the median over the last 50 rounds. Not
+  counted in WPM or key stats; the time counts in "Today".
+- **Home-row arrows** (optional, Windows): `extras/caps-arrows.ahk` is an
+  AutoHotkey v2 script. Hold Caps Lock and use `I J K L` as arrows, `U`/`O`
+  as Home/End, `H`/`;` as Backspace/Delete; Ctrl and Shift still combine.
 
 ## How the model avoids getting stuck
 

@@ -91,6 +91,17 @@
     } else out.push('Not enough data yet.');
     out.push('');
 
+    const ER = (state.edit && state.edit.rounds) || [];
+    if (ER.length && CTT.EDIT) {
+      const es = CTT.EDIT.summary(ER, 50);
+      out.push('## Edit drill (last ' + es.n + ' rounds; ' + ER.length + ' kept)', '');
+      out.push('- Median fix time: ' + num(es.medMs / 1000, 1) + ' s; keys vs best: ' + num(es.medRatio, 1) + '×');
+      out.push('- Used word jumps or Home/End: ' + pct(es.wordShare) + '; used the mouse: ' + pct(es.mouseShare));
+      const kinds = Object.entries(es.byKind).map(([k, v]) => CTT.EDIT.KIND_NAMES[k] + ' ' + num(v.medMs / 1000, 1) + ' s (' + v.n + ')');
+      if (kinds.length) out.push('- By kind (median): ' + kinds.join(', '));
+      out.push('');
+    }
+
     const conf = ENGINE.allConfusions(state, 12);
     out.push('## Top mix-ups (expected → typed, last 21 days)', '');
     if (conf.length) {

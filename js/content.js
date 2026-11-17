@@ -331,5 +331,5 @@
       .filter((l) => l.trim().length);
   }
 
-  CTT.CONTENT = { TRAIN, adaptive, lines, normalizeCode, symbolsIn };
+  CTT.CONTENT = { TRAIN, LINES, adaptive, lines, normalizeCode, symbolsIn };
 })();

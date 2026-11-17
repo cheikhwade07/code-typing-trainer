@@ -31,6 +31,7 @@
       lessons: [],
       mycode: { text: '', pos: 0 },
       tokens: {}, // word in code -> [[ms (0 miss, -1 untimed), ts]]
+      edit: { rounds: [] }, // Edit drill: [{ts, kind, ms, keys, par, arrows, word, homeEnd, del, mouse}]
     };
   }
 
@@ -72,6 +73,7 @@
       cooldown: raw.cooldown || {},
       lessons: Array.isArray(raw.lessons) ? raw.lessons : [],
       tokens: cleanTokens(raw.tokens),
+      edit: CTT.EDIT ? CTT.EDIT.clean(raw.edit) : { rounds: [] },
     };
     // v1 -> v2: samples had no timestamp; treat them as recent.
     const now = Date.now();
@@ -80,6 +82,8 @@
       if (k.level == null) k.level = 0;
       if (k.due === undefined) k.due = null;
     }
+    // A mode this build does not know (or Words/Edit, which are device-local) opens Adaptive.
+    if (!['adaptive', 'lines', 'mycode', 'warmup'].includes(s.mode)) s.mode = 'adaptive';
     // v3: finger colors became the default.
     if ((raw.v || 1) < 3) s.settings.fingerColors = true;
     s.v = VERSION;
@@ -294,6 +298,25 @@
     }
   }
 
+  // Edit drill on screen: device-local like Words, so the synced save never holds
+  // mode 'edit' (an older build on another device would not know it).
+  const EACTIVE = 'ctt.edit.active';
+  function editActive() {
+    try {
+      return localStorage.getItem(EACTIVE) === '1';
+    } catch (e) {
+      return false;
+    }
+  }
+  function setEditActive(on) {
+    try {
+      if (on) localStorage.setItem(EACTIVE, '1');
+      else if (localStorage.getItem(EACTIVE) !== null) localStorage.removeItem(EACTIVE);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
   function exportWords(w) {
     download('code-typing-trainer-words-backup-' + new Date().toISOString().slice(0, 10) + '.json',
       JSON.stringify(w, null, 2), 'application/json');
@@ -337,6 +360,6 @@
 
   CTT.STORE = {
     load, save, defaults, merge, exportJson, download,
-    wordsDefaults, mergeWords, loadWords, saveWords, wordsActive, setWordsActive, exportWords, takeLegacyWords,
+    wordsDefaults, mergeWords, loadWords, saveWords, wordsActive, setWordsActive, editActive, setEditActive, exportWords, takeLegacyWords,
   };
 })();
