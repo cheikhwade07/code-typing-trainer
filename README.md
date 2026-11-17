@@ -78,8 +78,10 @@ works, without automatic saving.
   or key stats; the time counts in "Today".
 - **Home-row arrows** (optional, Windows): `extras/caps-arrows.ahk` is an
   AutoHotkey v2 script. Hold Caps Lock and use `I J K L` as arrows, `U`/`O`
-  to jump a word, `Y`/`P` as Home/End, `H`/`;` as Backspace/Delete and `N`
-  to delete a word, so no Ctrl is needed; Shift still combines to select.
+  to jump a word, `Y`/`P` as Home/End, `H`/`;` as Backspace/Delete, `N`
+  to delete a word, `,`/`.` as undo/redo and `X C V` as cut/copy/paste, so no Ctrl is
+  needed. Also hold `D` to select with any move (`Caps+D+O` selects a word
+  to the right); the real Shift still works too.
 
 ## How the model avoids getting stuck
 
