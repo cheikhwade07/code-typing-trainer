@@ -10,6 +10,48 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-17: Edit drill levels
+
+Commit: see `git log --grep "Edit drill levels"`.
+
+### Why
+
+Every Edit round mixed all the moves at once, so there was no order in which
+to build the habits, and nothing showed which key to practise next. Edit now
+unlocks one skill at a time, like Adaptive unlocks symbols. Adaptive is
+unchanged.
+
+### What changed
+
+| Area | Before | After | Where |
+|---|---|---|---|
+| Rounds | any kind, mistake anywhere before the last 15% | 5 levels, each placing the mistake where its keys are the fastest fix: 1 Characters (2–6 from the end), 2 Line start (first 1–5 characters, lines of 30+), 3 Word jumps (10+ from the start and 12+ from the end), 4 Delete a word and 5 Select a word (a whole name replaced by another common name) | `LEVELS`, `plant(..., where, moves)`, `round({ lv })` in `js/edit.js` |
+| Best keys | all moves | only the moves of the round's level (level 1 arrows only, level 2 adds Home) | `navPar(s, p, moves)` |
+| Unlocking | – | a level passes when its last 10 rounds have median keys ≤ 1.3× best, median time ≤ 4/5/5/7/7 s and used its skill in 7+ (no mouse; Home/End; word jump; word delete; Shift selection) | `PASS`, `levelStatus` |
+| Which level | – | newest level 60% of rounds, else review of earlier ones, more often the one with the most keys vs best; all levels review once passed | `pickLevel` |
+| Measured | – | + `lv`, `wordDel`, `sel` per round; `edit.level` in the main save (old rounds have no level and do not count) | `finishEditRound`, `EDIT.clean` |
+| Panel | – | level line above the box (keys and plain-key name, "(review)"), ladder with passed, current (progress to pass) and locked levels; tips name the Caps keys | `renderEditLevels`, `tip` |
+| Report | – | current level and each level's last 10 rounds | `js/report.js` |
+| Extras | – | `caps-arrows.ahk`: Caps+Y/P word jumps and Caps+N word delete, so no Ctrl is needed | `extras/caps-arrows.ahk` |
+
+### Tests
+
+Scratch copy in the browser: 400 rounds per level (no bad placements,
+level 4–5 names are whole names starting with a letter), `pickLevel` shares,
+`levelStatus` pass and fail cases, `clean` with old, bad and missing data,
+50 rounds driven by key events (levels 1 and 2 unlocked, level saved and in
+the report), a level 4 round fixed with real Ctrl+Left ×3 and Ctrl+Backspace
+(par 8 as computed), no overflow at 375 px.
+
+### Rollback / tweak
+
+- `git revert` the commit. Older builds drop `edit.level`, `lv`, `wordDel` and
+  `sel` when they clean the save, and treat `name` rounds as unknown.
+- Pass rule: `PASS` (rounds, ratio, used) and each level's `ms` in
+  `js/edit.js`; review share: the `0.6` in `pickLevel`.
+
+---
+
 ## 2026-11-16: Edit drill and home-row arrows
 
 Commit: see `git log --grep "Edit drill"`.

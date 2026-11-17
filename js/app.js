@@ -241,7 +241,7 @@
 
   // ---------- Edit drill ----------
   // One planted mistake per round in a real text box; navigation keys are counted.
-  let editRound = null; // { r, start, keys, arrows, word, homeEnd, del, wordDel, mouse, done }
+  let editRound = null; // { r, start, keys, arrows, word, homeEnd, del, wordDel, sel, mouse, done }
   let editNextT = null;
   let editUnsynced = 0;
   function flushEdit() {
@@ -262,17 +262,30 @@
     $('textbox').hidden = on;
     $('typingHelp').hidden = on;
   }
+  // The edit save, with the unlocked level (1..LEVELS.length + 1 once all passed).
+  function editState() {
+    const ed = (state.edit = state.edit && Array.isArray(state.edit.rounds) ? state.edit : { rounds: [] });
+    if (!Number.isInteger(ed.level) || ed.level < 1) ed.level = 1;
+    return ed;
+  }
   function newEditRound() {
     clearTimeout(editNextT);
+    const ed = editState();
     const conf = ENGINE.allConfusions(state, 10).map((c) => ({ expected: c.expected, typed: c.typed }));
-    const r = EDIT.round(CONTENT.LINES, { confusions: conf, words: ENGINE.drillWords(state) });
-    editRound = { r, start: null, keys: 0, arrows: 0, word: 0, homeEnd: 0, del: 0, wordDel: 0, mouse: 0, done: false };
+    const lv = EDIT.pickLevel(ed.rounds, ed.level);
+    const r = EDIT.round(CONTENT.LINES, { lv, confusions: conf, words: ENGINE.drillWords(state) });
+    editRound = { r, start: null, keys: 0, arrows: 0, word: 0, homeEnd: 0, del: 0, wordDel: 0, sel: 0, mouse: 0, done: false };
+    const L = EDIT.LEVELS[r.lv - 1];
+    const review = r.lv < Math.min(ed.level, EDIT.LEVELS.length) || ed.level > EDIT.LEVELS.length;
+    $('editLevel').innerHTML = L
+      ? '<b>Level ' + r.lv + ' · ' + escHtml(L.name) + '</b> ' + (review ? '<span class="muted">(review)</span> ' : '') +
+        '· ' + escHtml(L.keys) + ' <span class="muted">(' + escHtml(L.alt) + ')</span>'
+      : '';
     // Target line with the spot to fix highlighted.
     const t = $('editTarget');
     t.textContent = '';
     const a = r.target.slice(0, r.pos);
-    const fixLen = r.kind === 'typo' ? 2 : 1;
-    const b = r.target.slice(r.pos, r.kind === 'extra' ? r.pos + 1 : r.pos + fixLen);
+    const b = r.target.slice(r.pos, r.pos + (r.len || 1));
     const c = r.target.slice(a.length + b.length);
     t.append(document.createTextNode(a));
     const mark = document.createElement('span');
@@ -296,19 +309,28 @@
     const rec = {
       ts: Date.now(), kind: E.r.kind, ms, keys: E.keys, par: E.r.par,
       arrows: E.arrows, word: E.word, homeEnd: E.homeEnd, del: E.del, mouse: E.mouse,
+      wordDel: E.wordDel, sel: E.sel,
     };
-    const ed = (state.edit = state.edit && Array.isArray(state.edit.rounds) ? state.edit : { rounds: [] });
+    if (E.r.lv) rec.lv = E.r.lv;
+    const ed = editState();
     ed.rounds.push(rec);
     if (ed.rounds.length > EDIT.ROUNDS_KEPT) ed.rounds.splice(0, ed.rounds.length - EDIT.ROUNDS_KEPT);
+    // Passing the newest level unlocks the next one.
+    let unlocked = null;
+    if (E.r.lv && E.r.lv === ed.level && ed.level <= EDIT.LEVELS.length && EDIT.levelStatus(ed.rounds, ed.level).passed) {
+      ed.level++;
+      unlocked = ed.level;
+    }
     // Saved in this browser every round; the server, folder and gist copies every
-    // 5 rounds and when leaving Edit or the page.
-    if (++editUnsynced >= 5) flushEdit();
+    // 5 rounds, on an unlock, and when leaving Edit or the page.
+    editUnsynced++;
+    if (unlocked || editUnsynced >= 5) flushEdit();
     else STORE.save(state);
     SOUND.complete();
     const inp = $('editInput');
     inp.classList.add('solved');
     inp.readOnly = true;
-    const tip = EDIT.tip(E.r, { ...E });
+    const tip = EDIT.tip(E.r, { ...E }, ed.level);
     const fb = $('editFeedback');
     fb.textContent = (ms / 1000).toFixed(1) + ' s · ' + E.keys + (E.keys === 1 ? ' key' : ' keys') + ' (best about ' + E.r.par + ')';
     if (tip) {
@@ -317,10 +339,43 @@
       s.textContent = ' · ' + tip;
       fb.append(s);
     }
+    if (unlocked) {
+      const s = document.createElement('span');
+      s.className = 'unlock';
+      const NL = EDIT.LEVELS[unlocked - 1];
+      s.textContent = NL ? ' · Level ' + unlocked + ' unlocked: ' + NL.name + ' (' + NL.keys + ')' : ' · All levels passed: rounds now review every level';
+      fb.append(s);
+    }
     renderMetrics();
-    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, tip ? 1600 : 700);
+    renderEditStats();
+    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, unlocked ? 3500 : tip ? 1600 : 700);
+  }
+  // The level ladder: passed levels, the current one with its progress, locked ones.
+  function renderEditLevels() {
+    const ed = editState();
+    const el = $('editLevels');
+    el.textContent = '';
+    EDIT.LEVELS.forEach((L, i) => {
+      const lv = i + 1;
+      const row = document.createElement('div');
+      const st = lv < ed.level ? 'passed' : lv === ed.level ? 'current' : 'locked';
+      row.className = 'lvl ' + st;
+      let prog = '';
+      if (st === 'current') {
+        const s = EDIT.levelStatus(ed.rounds, lv);
+        prog = s.n + '/' + EDIT.PASS.rounds + ' rounds · keys ' + (s.medRatio == null ? '–' : s.medRatio.toFixed(1) + '×') + ' (≤' + EDIT.PASS.ratio + '×)' +
+          ' · time ' + (s.medMs == null ? '–' : (s.medMs / 1000).toFixed(1) + 's') + ' (≤' + L.ms / 1000 + 's)' +
+          (lv > 1 ? ' · used the skill ' + s.used + '/' + s.n + ' (≥' + EDIT.PASS.used + ')' : '');
+      }
+      row.innerHTML = '<span class="lvl-n">' + (st === 'passed' ? '✓' : lv) + '</span>' +
+        '<span class="lvl-name">' + escHtml(L.name) + '</span>' +
+        '<span class="lvl-keys">' + escHtml(L.keys) + ' <span class="muted">(' + escHtml(L.alt) + ')</span></span>' +
+        (prog ? '<span class="lvl-prog muted">' + escHtml(prog) + '</span>' : '');
+      el.append(row);
+    });
   }
   function renderEditStats() {
+    renderEditLevels();
     const R = (state.edit && state.edit.rounds) || [];
     const s = EDIT.summary(R, 50);
     const el = $('editStats');
@@ -350,6 +405,7 @@
     }
     E.keys++;
     const k = e.key;
+    if (e.shiftKey && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(k)) E.sel++;
     if (k === 'ArrowLeft' || k === 'ArrowRight') {
       if (e.ctrlKey || e.metaKey) E.word++;
       else E.arrows++;

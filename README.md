@@ -61,9 +61,16 @@ works, without automatic saving.
   about the fewest possible, and a tip (for example "Ctrl+Left jumps a word").
   The panel and the report show the median over the last 50 rounds. Not
   counted in WPM or key stats; the time counts in "Today".
+  Edit unlocks one skill at a time: 1 Characters, 2 Line start (Home/End),
+  3 Word jumps, 4 Delete a word, 5 Select a word. Each level plants the
+  mistake where its keys are the fastest fix. A level passes when its last 10
+  rounds use at most 1.3× the fewest keys, are fast enough and use its skill
+  in 7 of 10; then 60% of rounds practise the new level and 40% review the
+  earlier ones.
 - **Home-row arrows** (optional, Windows): `extras/caps-arrows.ahk` is an
   AutoHotkey v2 script. Hold Caps Lock and use `I J K L` as arrows, `U`/`O`
-  as Home/End, `H`/`;` as Backspace/Delete; Ctrl and Shift still combine.
+  as Home/End, `H`/`;` as Backspace/Delete, `Y`/`P` to jump a word and `N`
+  to delete a word, so no Ctrl is needed; Shift still combines to select.
 
 ## How the model avoids getting stuck
 

@@ -31,7 +31,7 @@
       lessons: [],
       mycode: { text: '', pos: 0 },
       tokens: {}, // word in code -> [[ms (0 miss, -1 untimed), ts]]
-      edit: { rounds: [] }, // Edit drill: [{ts, kind, ms, keys, par, arrows, word, homeEnd, del, mouse}]
+      edit: { rounds: [], level: 1 }, // Edit drill: rounds [{ts, kind, lv, ms, keys, par, arrows, word, homeEnd, del, wordDel, sel, mouse}] and the unlocked level
     };
   }
 
@@ -73,7 +73,7 @@
       cooldown: raw.cooldown || {},
       lessons: Array.isArray(raw.lessons) ? raw.lessons : [],
       tokens: cleanTokens(raw.tokens),
-      edit: CTT.EDIT ? CTT.EDIT.clean(raw.edit) : { rounds: [] },
+      edit: CTT.EDIT ? CTT.EDIT.clean(raw.edit) : { rounds: [], level: 1 },
     };
     // v1 -> v2: samples had no timestamp; treat them as recent.
     const now = Date.now();

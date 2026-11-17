@@ -99,6 +99,13 @@
       out.push('- Used word jumps or Home/End: ' + pct(es.wordShare) + '; used the mouse: ' + pct(es.mouseShare));
       const kinds = Object.entries(es.byKind).map(([k, v]) => CTT.EDIT.KIND_NAMES[k] + ' ' + num(v.medMs / 1000, 1) + ' s (' + v.n + ')');
       if (kinds.length) out.push('- By kind (median): ' + kinds.join(', '));
+      const lvl = state.edit.level || 1;
+      const L = CTT.EDIT.LEVELS;
+      out.push('- Level: ' + (lvl > L.length ? 'all ' + L.length + ' passed (review)' : lvl + ' of ' + L.length + ' (' + L[lvl - 1].name + ')'));
+      L.forEach((x, i) => {
+        const s = CTT.EDIT.levelStatus(ER, i + 1);
+        if (s.n) out.push('  - ' + (i + 1) + ' ' + x.name + ': last ' + s.n + ' rounds, ' + num(s.medMs / 1000, 1) + ' s, keys ' + num(s.medRatio, 1) + '×, used the skill ' + s.used + '/' + s.n + (i + 1 < lvl ? ' (passed)' : ''));
+      });
       out.push('');
     }
 

@@ -49,10 +49,12 @@
     <p class="help muted" id="typingHelp">Type to start · <kbd>Esc</kbd> new lesson · <kbd>Enter</kbd> for line breaks · indentation fills in automatically</p>
 
     <section id="editPanel" class="edit" hidden>
+      <p id="editLevel" class="edit-level"></p>
       <div class="edit-row"><span class="edit-label">Should be</span><div id="editTarget" class="edit-line"></div></div>
       <div class="edit-row"><span class="edit-label">Fix this</span><input id="editInput" class="edit-line" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Line to fix"></div>
       <p id="editFeedback" class="edit-feedback"></p>
-      <p class="help muted">The cursor starts at the end of the line. <kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd> jump a word · <kbd>Home</kbd>/<kbd>End</kbd> · <kbd>Ctrl</kbd>+<kbd>Backspace</kbd> deletes a word · <kbd>Esc</kbd> skip · home-row arrows: <a href="https://github.com/cheikhwade07/code-typing-trainer/blob/main/extras/caps-arrows.ahk" target="_blank" rel="noopener">Caps Lock + IJKL</a></p>
+      <p class="help muted">The cursor starts at the end of the line. <kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd> jump a word · <kbd>Home</kbd>/<kbd>End</kbd> · <kbd>Ctrl</kbd>+<kbd>Backspace</kbd> deletes a word · <kbd>Esc</kbd> skip · Caps keys need the home-row script: <a href="https://github.com/cheikhwade07/code-typing-trainer/blob/main/extras/caps-arrows.ahk" target="_blank" rel="noopener">caps-arrows.ahk</a></p>
+      <div id="editLevels" class="edit-levels"></div>
       <div id="editStats" class="summary"></div>
     </section>
 
