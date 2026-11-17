@@ -10,6 +10,45 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-17: Edit becomes a word-jump drill
+
+Commit: see `git log --grep "word-jump drill"`.
+
+### Why
+
+The five levels (8166c05) spread practice across many keys. The goal is one
+habit: reaching a mistake with Ctrl+Left/Right instead of single arrows. The
+levels are removed.
+
+### What changed
+
+| Area | Before | After | Where |
+|---|---|---|---|
+| Rounds | 5 levels, each with its own placement and kinds (incl. wrong-name rounds) | one drill: swap, missing, extra or typo, only where word jumps save 3+ keys over arrows/Home (`MIN_GAIN`); each round knows its fastest jump: `L` (Ctrl+Left from the end) or `R` (Home, then Ctrl+Right) | `round`, `dirOf` in `js/edit.js` |
+| Focus | level ladder | the weaker jump over its last 20 rounds where it was fastest (fewer than 5 counts as not learned); 65% of rounds ask for it (`FOCUS_SHARE`), about 78% end up using it | `jumpStats`, `newEditRound` |
+| Symbol bar | symbols in every mode | in Edit: `Ctrl ←` / `Ctrl →` chips with the Caps key, bar = share of those rounds where you used it, focus outlined | `renderStrip` |
+| Metrics row | WPM, Accuracy, Same-hand Shift in every mode | in Edit: fix time, keys vs best, word-jump share (median / share of the last 20) | `renderMetrics` |
+| Mode bar | Edit last | Edit right after Adaptive | `index.html` |
+| Save | `edit.level`, `lv`, `wordDel`, `sel` | + `dir`, `wl`, `wr` per round; level fields dropped on load | `EDIT.clean` |
+| Report | level ladder | each jump's use and which is the focus | `js/report.js` |
+
+### Tests
+
+Scratch copy in the browser: 600 rounds each with no focus, focus L and focus
+R (every round saves 3+ keys; focus share about 78%), `jumpStats` focus
+choice, `clean` with old level data, a round fixed with real Ctrl+Left in
+Chrome (stops matched `wordStops`), switching back to Adaptive restores the
+symbols and labels, report section builds, no horizontal overflow.
+
+### Rollback / tweak
+
+- `git revert` the commit to get the levels back (rounds saved since then
+  have no level and do not count toward them).
+- `MIN_GAIN`, `FOCUS_SHARE` in `js/edit.js`; the 20-round window in
+  `jumpStats`.
+
+---
+
 ## 2026-11-17: Edit drill levels
 
 Commit: see `git log --grep "Edit drill levels"`.

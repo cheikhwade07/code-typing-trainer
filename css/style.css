@@ -185,22 +185,15 @@ input.edit-line.solved { border-color: var(--good); }
 .edit-feedback { min-height: 1.4em; margin: 8px 0 0 86px; font-size: 14px; }
 .edit-feedback .tip { color: var(--accent); }
 .edit a { color: var(--accent); }
-.edit-level { margin: 0 0 10px; font-size: 14px; }
-.edit-feedback .unlock { color: var(--good); font-weight: 600; }
-.edit-levels { display: grid; gap: 4px; margin: 10px 0 14px; font-size: 13px; }
-.lvl { display: grid; grid-template-columns: 24px 120px 1fr; gap: 4px 10px; align-items: baseline; padding: 4px 8px; border-radius: 6px; }
-.lvl-n { text-align: center; font-weight: 600; }
-.lvl-prog { grid-column: 2 / -1; font-size: 12px; }
-.lvl.passed .lvl-n { color: var(--good); }
-.lvl.current { background: var(--accent-soft); }
-.lvl.current .lvl-name { font-weight: 600; }
-.lvl.locked { opacity: 0.45; }
+/* Edit: word-jump commands in the symbol bar */
+#keystrip.jumps { gap: 12px; }
+.sym.cmd { width: auto; min-width: 96px; padding: 0 14px 6px; height: 46px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; }
+.sym.cmd .k { font-size: 16px; line-height: 1.1; }
+.sym.cmd .c { font-size: 11px; color: var(--muted); line-height: 1.1; }
 @media (max-width: 640px) {
   .edit-row { flex-direction: column; align-items: stretch; gap: 4px; }
   .edit-label { width: auto; text-align: left; }
   .edit-feedback { margin-left: 0; }
-  .lvl { grid-template-columns: 24px 1fr; }
-  .lvl-keys, .lvl-prog { grid-column: 2; }
 }
 
 /* My code panel */

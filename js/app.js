@@ -241,7 +241,7 @@
 
   // ---------- Edit drill ----------
   // One planted mistake per round in a real text box; navigation keys are counted.
-  let editRound = null; // { r, start, keys, arrows, word, homeEnd, del, wordDel, sel, mouse, done }
+  let editRound = null; // { r, start, keys, arrows, word, wl, wr, homeEnd, del, wordDel, mouse, done }
   let editNextT = null;
   let editUnsynced = 0;
   function flushEdit() {
@@ -262,25 +262,17 @@
     $('textbox').hidden = on;
     $('typingHelp').hidden = on;
   }
-  // The edit save, with the unlocked level (1..LEVELS.length + 1 once all passed).
   function editState() {
-    const ed = (state.edit = state.edit && Array.isArray(state.edit.rounds) ? state.edit : { rounds: [] });
-    if (!Number.isInteger(ed.level) || ed.level < 1) ed.level = 1;
-    return ed;
+    return (state.edit = state.edit && Array.isArray(state.edit.rounds) ? state.edit : { rounds: [] });
   }
   function newEditRound() {
     clearTimeout(editNextT);
     const ed = editState();
     const conf = ENGINE.allConfusions(state, 10).map((c) => ({ expected: c.expected, typed: c.typed }));
-    const lv = EDIT.pickLevel(ed.rounds, ed.level);
-    const r = EDIT.round(CONTENT.LINES, { lv, confusions: conf, words: ENGINE.drillWords(state) });
-    editRound = { r, start: null, keys: 0, arrows: 0, word: 0, homeEnd: 0, del: 0, wordDel: 0, sel: 0, mouse: 0, done: false };
-    const L = EDIT.LEVELS[r.lv - 1];
-    const review = r.lv < Math.min(ed.level, EDIT.LEVELS.length) || ed.level > EDIT.LEVELS.length;
-    $('editLevel').innerHTML = L
-      ? '<b>Level ' + r.lv + ' · ' + escHtml(L.name) + '</b> ' + (review ? '<span class="muted">(review)</span> ' : '') +
-        '· ' + escHtml(L.keys) + ' <span class="muted">(' + escHtml(L.alt) + ')</span>'
-      : '';
+    // Most rounds practise the weaker word jump (the focus in the bar above).
+    const dir = EDIT.jumpStats(ed.rounds).focus;
+    const r = EDIT.round(CONTENT.LINES, { dir, confusions: conf, words: ENGINE.drillWords(state) });
+    editRound = { r, start: null, keys: 0, arrows: 0, word: 0, wl: 0, wr: 0, homeEnd: 0, del: 0, wordDel: 0, mouse: 0, done: false };
     // Target line with the spot to fix highlighted.
     const t = $('editTarget');
     t.textContent = '';
@@ -309,28 +301,20 @@
     const rec = {
       ts: Date.now(), kind: E.r.kind, ms, keys: E.keys, par: E.r.par,
       arrows: E.arrows, word: E.word, homeEnd: E.homeEnd, del: E.del, mouse: E.mouse,
-      wordDel: E.wordDel, sel: E.sel,
+      dir: E.r.dir, wl: E.wl, wr: E.wr,
     };
-    if (E.r.lv) rec.lv = E.r.lv;
     const ed = editState();
     ed.rounds.push(rec);
     if (ed.rounds.length > EDIT.ROUNDS_KEPT) ed.rounds.splice(0, ed.rounds.length - EDIT.ROUNDS_KEPT);
-    // Passing the newest level unlocks the next one.
-    let unlocked = null;
-    if (E.r.lv && E.r.lv === ed.level && ed.level <= EDIT.LEVELS.length && EDIT.levelStatus(ed.rounds, ed.level).passed) {
-      ed.level++;
-      unlocked = ed.level;
-    }
     // Saved in this browser every round; the server, folder and gist copies every
-    // 5 rounds, on an unlock, and when leaving Edit or the page.
-    editUnsynced++;
-    if (unlocked || editUnsynced >= 5) flushEdit();
+    // 5 rounds and when leaving Edit or the page.
+    if (++editUnsynced >= 5) flushEdit();
     else STORE.save(state);
     SOUND.complete();
     const inp = $('editInput');
     inp.classList.add('solved');
     inp.readOnly = true;
-    const tip = EDIT.tip(E.r, { ...E }, ed.level);
+    const tip = EDIT.tip(E.r, { ...E });
     const fb = $('editFeedback');
     fb.textContent = (ms / 1000).toFixed(1) + ' s · ' + E.keys + (E.keys === 1 ? ' key' : ' keys') + ' (best about ' + E.r.par + ')';
     if (tip) {
@@ -339,43 +323,12 @@
       s.textContent = ' · ' + tip;
       fb.append(s);
     }
-    if (unlocked) {
-      const s = document.createElement('span');
-      s.className = 'unlock';
-      const NL = EDIT.LEVELS[unlocked - 1];
-      s.textContent = NL ? ' · Level ' + unlocked + ' unlocked: ' + NL.name + ' (' + NL.keys + ')' : ' · All levels passed: rounds now review every level';
-      fb.append(s);
-    }
     renderMetrics();
-    renderEditStats();
-    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, unlocked ? 3500 : tip ? 1600 : 700);
-  }
-  // The level ladder: passed levels, the current one with its progress, locked ones.
-  function renderEditLevels() {
-    const ed = editState();
-    const el = $('editLevels');
-    el.textContent = '';
-    EDIT.LEVELS.forEach((L, i) => {
-      const lv = i + 1;
-      const row = document.createElement('div');
-      const st = lv < ed.level ? 'passed' : lv === ed.level ? 'current' : 'locked';
-      row.className = 'lvl ' + st;
-      let prog = '';
-      if (st === 'current') {
-        const s = EDIT.levelStatus(ed.rounds, lv);
-        prog = s.n + '/' + EDIT.PASS.rounds + ' rounds · keys ' + (s.medRatio == null ? '–' : s.medRatio.toFixed(1) + '×') + ' (≤' + EDIT.PASS.ratio + '×)' +
-          ' · time ' + (s.medMs == null ? '–' : (s.medMs / 1000).toFixed(1) + 's') + ' (≤' + L.ms / 1000 + 's)' +
-          (lv > 1 ? ' · used the skill ' + s.used + '/' + s.n + ' (≥' + EDIT.PASS.used + ')' : '');
-      }
-      row.innerHTML = '<span class="lvl-n">' + (st === 'passed' ? '✓' : lv) + '</span>' +
-        '<span class="lvl-name">' + escHtml(L.name) + '</span>' +
-        '<span class="lvl-keys">' + escHtml(L.keys) + ' <span class="muted">(' + escHtml(L.alt) + ')</span></span>' +
-        (prog ? '<span class="lvl-prog muted">' + escHtml(prog) + '</span>' : '');
-      el.append(row);
-    });
+    renderStrip();
+    renderFocus();
+    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, tip ? 1600 : 700);
   }
   function renderEditStats() {
-    renderEditLevels();
     const R = (state.edit && state.edit.rounds) || [];
     const s = EDIT.summary(R, 50);
     const el = $('editStats');
@@ -386,7 +339,7 @@
       '<div><b>' + s.n + '</b>rounds (last 50)</div>' +
       '<div><b>' + (s.medMs == null ? '–' : (s.medMs / 1000).toFixed(1) + 's') + '</b>median fix time</div>' +
       '<div><b>' + (s.medRatio == null ? '–' : s.medRatio.toFixed(1) + '×') + '</b>keys vs best</div>' +
-      '<div><b>' + pctS(s.wordShare) + '</b>used word jumps or Home/End</div>' +
+      '<div><b>' + pctS(s.wordShare) + '</b>used word jumps</div>' +
       '<div><b>' + pctS(s.mouseShare) + '</b>used the mouse</div>' +
       (slow ? '<div><b>' + escHtml(EDIT.KIND_NAMES[slow[0]]) + '</b>slowest kind</div>' : '');
   }
@@ -405,10 +358,12 @@
     }
     E.keys++;
     const k = e.key;
-    if (e.shiftKey && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(k)) E.sel++;
     if (k === 'ArrowLeft' || k === 'ArrowRight') {
-      if (e.ctrlKey || e.metaKey) E.word++;
-      else E.arrows++;
+      if (e.ctrlKey || e.metaKey) {
+        E.word++;
+        if (k === 'ArrowLeft') E.wl++;
+        else E.wr++;
+      } else E.arrows++;
     } else if (k === 'Home' || k === 'End') E.homeEnd++;
     else if (k === 'Backspace' || k === 'Delete') {
       E.del++;
@@ -778,6 +733,27 @@
   function renderStrip() {
     const strip = $('keystrip');
     strip.innerHTML = '';
+    strip.classList.toggle('jumps', curMode() === 'edit');
+    if (curMode() === 'edit') {
+      // Edit: the two word-jump commands instead of symbols; the bar is how often
+      // you used each one when it was the fastest way (last 20 such rounds).
+      const js = EDIT.jumpStats(editState().rounds);
+      EDIT.JUMPS.forEach((j) => {
+        const st = js[j.dir];
+        const d = document.createElement('div');
+        d.className = 'sym cmd' + (j.dir === js.focus ? ' focus' : '') + (st.n >= 5 && st.share >= 0.9 ? ' learned' : '');
+        d.innerHTML = '<span class="k"></span><span class="c"></span>';
+        d.querySelector('.k').textContent = j.key;
+        d.querySelector('.c').textContent = j.caps;
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        bar.innerHTML = '<i style="width:' + Math.round(st.share * 100) + '%;background:' + confColor(st.share) + '"></i>';
+        d.appendChild(bar);
+        d.title = j.key + ' (' + j.caps + ') · ' + j.what + '\nused in ' + st.used + ' of the last ' + st.n + ' rounds where it was fastest';
+        strip.appendChild(d);
+      });
+      return;
+    }
     const S = trk();
     const focus = ENGINE.focusKey(S);
     keyOrder(S).forEach((ch, i) => {
@@ -804,7 +780,9 @@
     const el = $('focusLine');
     let html = '';
     if (curMode() === 'edit') {
-      html = 'Edit · fix the mistake · the cursor starts at the end · not counted in WPM or key stats';
+      const js = EDIT.jumpStats(editState().rounds);
+      const j = EDIT.JUMPS.find((x) => x.dir === js.focus);
+      html = 'Focus <b>' + j.key + '</b> (' + j.caps + ') · ' + j.what + ' · the cursor starts at the end · not counted in WPM or key stats';
     } else if (isWords() && lesson && lesson.sentences) {
       html = 'Sentences · all letters unlocked · capitals and punctuation are not counted';
     } else if (curMode() === 'adaptive' || isWords()) {
@@ -904,6 +882,19 @@
     const editMs = ((state.edit && state.edit.rounds) || []).filter(isToday).reduce((a, r) => a + Math.min(r.ms || 0, 60000), 0);
     const mins = ENGINE.lessonMin(state.lessons.filter(isToday)) + ENGINE.lessonMin(words.lessons.filter(isToday)) + editMs / 60000;
     $('mToday').textContent = mins < 1 ? Math.round(mins * 60) + 's' : Math.round(mins) + 'm';
+    // Edit: the same row shows the word-jump drill (last 20 rounds).
+    const edit = curMode() === 'edit';
+    $('mWpmL').textContent = edit ? 'Fix time' : 'WPM';
+    $('mAccL').textContent = edit ? 'Keys vs best' : 'Accuracy';
+    $('mShiftL').textContent = edit ? 'Word jumps' : 'Same-hand Shift';
+    if (edit) {
+      const s = EDIT.summary(editState().rounds, 20);
+      $('mWpm').textContent = s.medMs == null ? '–' : (s.medMs / 1000).toFixed(1) + 's';
+      $('mAcc').textContent = s.medRatio == null ? '–' : s.medRatio.toFixed(1) + '×';
+      $('mShift').textContent = s.wordShare == null ? '–' : Math.round(s.wordShare * 100) + '%';
+      ['mWpmD', 'mAccD'].forEach((id) => { $(id).textContent = ''; $(id).className = 'delta'; });
+      return;
+    }
     if (!L) {
       $('mWpm').textContent = '–';
       $('mAcc').textContent = '–';

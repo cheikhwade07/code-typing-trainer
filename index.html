@@ -11,11 +11,11 @@
     <div class="brand"><span class="logo">{ }</span> Code Typing Trainer</div>
     <nav class="modes" aria-label="Mode">
       <button data-mode="adaptive" title="Adaptive symbol drills, keybr-style">Adaptive</button>
+      <button data-mode="edit" title="Fix a planted mistake by jumping words with Ctrl+Left/Right">Edit</button>
       <button data-mode="lines" title="Real Python lines weighted toward your weak keys">Lines</button>
       <button data-mode="mycode" title="Retype your own code">My code</button>
       <button data-mode="words" title="Letters unlock one at a time, keybr-style, with AI/ML words. Separate stats.">Words</button>
       <button data-mode="warmup" title="Find one finger's keys, row by row. Not counted in stats.">Warmup</button>
-      <button data-mode="edit" title="Fix a planted mistake with Ctrl+arrows, Home/End and word deletes">Edit</button>
     </nav>
     <div class="actions">
       <button id="fileBtn" class="ghost">Save to folder…</button>
@@ -28,9 +28,9 @@
     <section id="keystrip" aria-label="Symbol progress"></section>
 
     <section class="metrics">
-      <div class="metric"><span class="label">WPM</span><span id="mWpm" class="value">–</span><span id="mWpmD" class="delta"></span></div>
-      <div class="metric"><span class="label">Accuracy</span><span id="mAcc" class="value">–</span><span id="mAccD" class="delta"></span></div>
-      <div class="metric"><span class="label">Same-hand Shift</span><span id="mShift" class="value">–</span></div>
+      <div class="metric"><span id="mWpmL" class="label">WPM</span><span id="mWpm" class="value">–</span><span id="mWpmD" class="delta"></span></div>
+      <div class="metric"><span id="mAccL" class="label">Accuracy</span><span id="mAcc" class="value">–</span><span id="mAccD" class="delta"></span></div>
+      <div class="metric"><span id="mShiftL" class="label">Same-hand Shift</span><span id="mShift" class="value">–</span></div>
       <div class="metric"><span class="label">Today</span><span id="mToday" class="value">0m</span></div>
     </section>
 
@@ -49,12 +49,10 @@
     <p class="help muted" id="typingHelp">Type to start · <kbd>Esc</kbd> new lesson · <kbd>Enter</kbd> for line breaks · indentation fills in automatically</p>
 
     <section id="editPanel" class="edit" hidden>
-      <p id="editLevel" class="edit-level"></p>
       <div class="edit-row"><span class="edit-label">Should be</span><div id="editTarget" class="edit-line"></div></div>
       <div class="edit-row"><span class="edit-label">Fix this</span><input id="editInput" class="edit-line" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Line to fix"></div>
       <p id="editFeedback" class="edit-feedback"></p>
-      <p class="help muted">The cursor starts at the end of the line. <kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd> jump a word · <kbd>Home</kbd>/<kbd>End</kbd> · <kbd>Ctrl</kbd>+<kbd>Backspace</kbd> deletes a word · <kbd>Esc</kbd> skip · Caps keys need the home-row script: <a href="https://github.com/cheikhwade07/code-typing-trainer/blob/main/extras/caps-arrows.ahk" target="_blank" rel="noopener">caps-arrows.ahk</a></p>
-      <div id="editLevels" class="edit-levels"></div>
+      <p class="help muted">The cursor starts at the end of the line. <kbd>Ctrl</kbd>+<kbd>←</kbd> jumps a word left · near the start: <kbd>Home</kbd>, then <kbd>Ctrl</kbd>+<kbd>→</kbd> · <kbd>Esc</kbd> skip · Caps+Y / P / U need the home-row script: <a href="https://github.com/cheikhwade07/code-typing-trainer/blob/main/extras/caps-arrows.ahk" target="_blank" rel="noopener">caps-arrows.ahk</a></p>
       <div id="editStats" class="summary"></div>
     </section>
 

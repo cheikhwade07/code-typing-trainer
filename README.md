@@ -53,20 +53,16 @@ works, without automatic saving.
   and back (`;p ;p p;`), row by row: home row, top row, bottom row, number
   row, then a mix. The keyboard dims every other finger's keys. Nothing is
   recorded: no stats, no mix-ups, no progress changes.
-- **Edit**: fix one planted mistake in a line of real Python (a swapped
-  symbol from your own mix-ups, a missing `)` or `:`, an extra character, or
-  two swapped letters in a name). The cursor starts at the end of the line,
-  in a real text box, so `Ctrl+←/→`, `Home`/`End` and `Ctrl+Backspace` work
-  as in an interview editor. Each round shows the time, the keys used against
-  about the fewest possible, and a tip (for example "Ctrl+Left jumps a word").
-  The panel and the report show the median over the last 50 rounds. Not
-  counted in WPM or key stats; the time counts in "Today".
-  Edit unlocks one skill at a time: 1 Characters, 2 Line start (Home/End),
-  3 Word jumps, 4 Delete a word, 5 Select a word. Each level plants the
-  mistake where its keys are the fastest fix. A level passes when its last 10
-  rounds use at most 1.3× the fewest keys, are fast enough and use its skill
-  in 7 of 10; then 60% of rounds practise the new level and 40% review the
-  earlier ones.
+- **Edit** (next to Adaptive): a word-jump drill. Fix one planted mistake in
+  a line of real Python (a swapped symbol from your own mix-ups, a missing `)`
+  or `:`, an extra character, or two swapped letters in a name), always placed
+  where `Ctrl+←/→` saves at least 3 keys over arrows or Home. The cursor
+  starts at the end of the line, in a real text box, as in an interview
+  editor. The symbol bar shows the two commands instead: `Ctrl ←` (from the
+  end) and `Ctrl →` (after Home), each with a bar for how often you used it in
+  its last 20 rounds where it was fastest. The weaker one is the focus and
+  gets about 2 rounds in 3. The metrics row shows fix time, keys vs best and
+  word-jump share. Not counted in WPM or key stats; the time counts in "Today".
 - **Home-row arrows** (optional, Windows): `extras/caps-arrows.ahk` is an
   AutoHotkey v2 script. Hold Caps Lock and use `I J K L` as arrows, `U`/`O`
   as Home/End, `H`/`;` as Backspace/Delete, `Y`/`P` to jump a word and `N`
