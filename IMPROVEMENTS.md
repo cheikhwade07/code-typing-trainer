@@ -10,6 +10,71 @@ simulation in `sim/` before and after.
 
 ---
 
+## 2026-11-17: Edit live next-best-key planner
+
+Commit: see `git log --grep "next-best-key planner"`.
+
+### Why
+
+The command ladder locked commands that the script already provides, and its
+bars counted whole rounds (did you use the command at all), not whether each
+key was a good choice. A live plan from the current text and cursor can say
+after every key what the best next key is, so every keypress is practice
+feedback and no command has to wait behind another.
+
+### What changed
+
+| Area | Before | After | Where |
+|---|---|---|---|
+| Planner | fixed `ways` per mistake, moves from the start cursor only (`moves`, `bestWay`) | `plan(v, c, t)`: diff by prefix-first and suffix-first alignment, breadth-first cursor distances over J L Y P U O, fixes by single deletes + typing, word deletes (up to 3) + retyping, or a swapped pair (Backspace, Right, type); best keys = every next key that leaves the fewest keys after it | `cost`, `plan`, `regions`, `navDist` in `js/edit.js` |
+| Locking | `Caps+Y`, `Caps+P` open, U O N unlock at 80%+ over 5 to 10 rounds | no locking: every command always available | `UNLOCK`, `START_UNLOCKED`, `canUnlock` removed |
+| Rounds | best way with unlocked commands must use the round's command | par = planner cost with every command; the same fix without the round's command must take 3+ more keys; command is the focus 65%, else any of Y P U O N | `round` |
+| Decisions | none | every editing key: `[best ids, key pressed, ms since previous key or round start]`, up to 40 per round, saved as `d` | `classify`, `bestStr`, keydown in `js/app.js` |
+| Bars and focus | share of last 10 rounds where it was fastest | accuracy over the last 30 decisions where the command was a best key; median reaction of hits; focus = lowest accuracy of Y P U O N (fewer than 8 counts as weakest) | `cmdStats`, `DEC_WINDOW`, `DEC_MIN` |
+| Symbol bar | 5 chips, some locked | 7 chips: Y P U O N, `Caps+J·L`, `Caps+H·;`; tooltip with accuracy, opportunities, median reaction | `CHIPS`, `renderStrip` |
+| Hint | round's first command lit (when Highlight next key is on) | Edit hint setting: `pause` (default, after 1 s without a key), `always`, `off`; lights Caps + each best key (for typing: the character and Shift) and shows "Next: Caps+Y (Ctrl ←)" | `editReplan`, `setEditHint`, `renderKeymapHighlight`, `index.html` |
+| Feedback | tip about skipped commands | time, keys vs best and "first miss: best was ..., you pressed ..." | `firstMiss`, `finishEditRound` |
+| Metrics | focus command's share | best-key rate (last 20 rounds) | `renderMetrics`, `summary` |
+| Report | used in N of last rounds per command | table: accuracy, opportunities, median reaction, focus per command | `js/report.js` |
+| Save | `cmds`, `edit.unlocked` | + `cmd`, `d`; `unlocked` dropped on load; older rounds still load | `EDIT.clean`, `js/store.js` |
+| Caps keys | `Caps+Y`/`P` word jumps, `Caps+U`/`O` Home/End | swapped: `Caps+U`/`O` jump a word (beside J and L, used most), `Caps+Y`/`P` Home/End; saved ids keep their old letters (Y P = word jumps, U O = Home/End) so old rounds still count | `CMDS` in `js/edit.js`, `CAPS_KEY` in `js/app.js`, `extras/caps-arrows.ahk` (re-copy the script and restart AutoHotkey) |
+| Exactness | fixed strategies only, 1 key too many on some fixes (a swapped pair fixed from either side, shared letters in a wrong name) | the fixed strategies give an upper bound; then an exact cheapest-first search inside the window from the start of the first wrong word to the end of the diff, with every key and an LCS lower bound; one shared budget per plan (`PLAN_STATES`) keeps the worst case fast, falling back to the upper bound | `quickCost`, `localCost`, `editFrom`, `lcs` |
+| Deploys | `?v=20261117c` | `?v=20261117e` | `index.html` |
+
+### Tests
+
+Scratch copy in the browser pane: page loads with no errors besides the
+missing data API; Edit shows 7 chips; planner best keys hand-checked on 9
+states (word jumps, End then jumps, Delete or type first, Backspace or
+Ctrl+Backspace on one symbol, Ctrl+Backspace for a wrong name, swapped
+letters); two rounds fixed with real key presses (Ctrl+←, Delete, ←, →,
+Ctrl+Backspace, typing), decisions saved and reloaded, keys 14 ms apart
+scored against the right state; hint modes pause, always and off; report
+table; `clean` drops malformed decisions and `unlocked`; 100 rounds per
+command with no fallbacks, par at most 10 and equal to the live plan; about
+0.5 ms per plan on a 55-character line; Adaptive unchanged.
+
+After the exact search (Node, the real `js/edit.js`): 3000 random states,
+0 states where following the best keys does not reach par and 0 wrong best
+keys; 443 states against a brute-force search, 0 wrong costs, 0 missed or
+extra best keys. Timing over 600 rounds: median 1 ms per plan, 99th
+percentile 22 ms, worst 42 ms. Ctrl+Backspace in real Chrome deleted back to
+the predicted word stop in 11 of 11 cases (`x)) :`, `a  b`, `self.left`,
+`foo(bar, baz)` and others). Swapped labels and the keyboard flash checked
+on the scratch copy (Ctrl ← lights Caps+U).
+
+Note: a build older than this one drops the new `d` decisions when it saves,
+so reload every open tab after the deploy.
+
+### Rollback / tweak
+
+- `git revert` the commit.
+- `MIN_GAIN`, `MAX_PAR`, `FOCUS_SHARE`, `DEC_WINDOW`, `DEC_MIN`,
+  `DEC_PER_ROUND` in `js/edit.js`; the hint delay (1000 ms) in `editReplan`
+  in `js/app.js`.
+
+---
+
 ## 2026-11-17: Edit as Adaptive for the Caps Lock commands
 
 Commit: see `git log --grep "Caps Lock commands"`.

@@ -96,15 +96,16 @@
       const es = CTT.EDIT.summary(ER, 50);
       out.push('## Edit drill (last ' + es.n + ' rounds; ' + ER.length + ' kept)', '');
       out.push('- Median fix time: ' + num(es.medMs / 1000, 1) + ' s; keys vs best: ' + num(es.medRatio, 1) + '×');
-      out.push('- Used word jumps: ' + pct(es.wordShare) + '; used the mouse: ' + pct(es.mouseShare));
+      out.push('- Best-key rate: ' + pct(es.bestRate) + ' of ' + es.decisions + ' decisions; used the mouse: ' + pct(es.mouseShare));
       const kinds = Object.entries(es.byKind).map(([k, v]) => CTT.EDIT.KIND_NAMES[k] + ' ' + num(v.medMs / 1000, 1) + ' s (' + v.n + ')');
       if (kinds.length) out.push('- By kind (median): ' + kinds.join(', '));
-      const cs = CTT.EDIT.cmdStats(ER, state.edit.unlocked);
-      CTT.EDIT.CMDS.forEach((c, i) => {
+      const cs = CTT.EDIT.cmdStats(ER);
+      out.push('', '| Command | Accuracy | Opportunities | Median reaction (ms) | Focus |', '|---|---|---|---|---|');
+      CTT.EDIT.CMDS.forEach((c) => {
         const s = cs.by[c.id];
-        out.push('- ' + c.caps + ' (' + c.key + '): ' + (i >= cs.unlocked ? 'locked' : 'used in ' + s.used + ' of the last ' + s.n + ' rounds where it was fastest' + (c.id === cs.focus ? ' (focus)' : '')));
+        out.push('| ' + c.caps + ' (' + c.key + ') | ' + (s.n ? pct(s.acc) : '–') + ' | ' + s.n + ' | ' + (s.medMs == null ? '–' : num(s.medMs)) + ' | ' + (c.id === cs.focus ? 'yes' : '') + ' |');
       });
-      out.push('');
+      out.push('', 'Accuracy: over each command\'s last ' + CTT.EDIT.DEC_WINDOW + ' keys where it was a best next key, the share where a best key was pressed. Focus: the weakest of Caps+U, O, Y, P, N (fewer than ' + CTT.EDIT.DEC_MIN + ' counts as weakest).', '');
     }
 
     const conf = ENGINE.allConfusions(state, 12);

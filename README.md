@@ -57,21 +57,28 @@ works, without automatic saving.
   (`extras/caps-arrows.ahk`). Each round plants one mistake in a line of real
   Python (a swapped symbol from your own mix-ups, a missing `)` or `:`, an
   extra character, two swapped letters, or a wrong name) and is built around
-  one command: the best way must use it, save 3+ keys and take at most 10.
-  The symbol bar shows the commands instead of symbols, Caps name first:
-  `Caps+Y` (Ctrl ←) and `Caps+P` (Ctrl →) to start, then `Caps+U` (Home),
-  `Caps+O` (End) and `Caps+N` (Ctrl+Backspace) unlock in turn once every
-  unlocked command is used in 80%+ of its last 5–10 rounds where it was
-  fastest. The weakest is the focus and gets about 2 rounds in 3; rounds for
-  `Caps+P` and `Caps+O` start with the cursor at the start of the line. The
-  drawn keyboard lights Caps and the round's key, and flashes the layer key
-  for every editing key you press (the browser cannot tell Caps+Y from a real
-  Ctrl+←, so either counts). The metrics row shows fix time, keys vs best and
-  the focus command's share. Not counted in WPM or key stats; the time counts
-  in "Today".
+  one command: the fix with every command takes at most 10 keys and 3+ more
+  without it. Every command is always available (no locking). After every key
+  a live planner works out the fewest keys left from the current text and
+  cursor, and which next keys start such a way; each key you press is scored
+  as a decision (a best key or not). The symbol bar shows 7 chips, Caps name
+  first with the plain key under it: `Caps+U` (Ctrl ←), `Caps+O` (Ctrl →),
+  `Caps+Y` (Home), `Caps+P` (End), `Caps+N` (Ctrl+Backspace), `Caps+J·L`
+  (← →) and `Caps+H·;` (Backspace, Delete). Each bar is the accuracy over the
+  last 30 keys where that command was a best next key. The weakest of the
+  five Caps commands (fewer than 8 such keys counts as weakest) is the focus
+  and gets about 2 rounds in 3; rounds for `Caps+O` and `Caps+P` start with the cursor
+  at the start of the line. The hint (Settings, General: Edit hint) lights
+  Caps and the best key on the drawn keyboard and names it under the line,
+  after a 1 s pause (default), always, or never; it is also off when
+  Highlight next key is off. Caps and the layer key flash for every editing
+  key you press (the browser cannot tell Caps+U from a real Ctrl+←, so either
+  counts). After a round: time, keys vs best and the first miss. The metrics
+  row shows fix time, keys vs best and the best-key rate. Not counted in WPM
+  or key stats; the time counts in "Today".
 - **Home-row arrows** (optional, Windows): `extras/caps-arrows.ahk` is an
   AutoHotkey v2 script. Hold Caps Lock and use `I J K L` as arrows, `U`/`O`
-  as Home/End, `H`/`;` as Backspace/Delete, `Y`/`P` to jump a word and `N`
+  to jump a word, `Y`/`P` as Home/End, `H`/`;` as Backspace/Delete and `N`
   to delete a word, so no Ctrl is needed; Shift still combines to select.
 
 ## How the model avoids getting stuck

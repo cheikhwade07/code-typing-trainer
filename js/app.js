@@ -241,7 +241,7 @@
 
   // ---------- Edit drill ----------
   // One planted mistake per round in a real text box; navigation keys are counted.
-  let editRound = null; // { r, start, keys, arrows, word, wl, wr, hm, en, homeEnd, del, wordDel, mouse, done }
+  let editRound = null; // { r, start, keys, arrows, word, wl, wr, hm, en, homeEnd, del, wordDel, mouse, done, d, lastT }
   let editNextT = null;
   let editUnsynced = 0;
   function flushEdit() {
@@ -261,8 +261,8 @@
   }
   // The Caps Lock layer never reaches the page (the script sends arrow keys), so
   // light Caps and the layer key for each editing key that arrives.
-  const CAPS_KEY = { ArrowLeft: ['KeyJ', 'KeyY'], ArrowRight: ['KeyL', 'KeyP'], ArrowUp: ['KeyI'], ArrowDown: ['KeyK'],
-    Home: ['KeyU'], End: ['KeyO'], Backspace: ['KeyH', 'KeyN'], Delete: ['Semicolon'] };
+  const CAPS_KEY = { ArrowLeft: ['KeyJ', 'KeyU'], ArrowRight: ['KeyL', 'KeyO'], ArrowUp: ['KeyI'], ArrowDown: ['KeyK'],
+    Home: ['KeyY'], End: ['KeyP'], Backspace: ['KeyH', 'KeyN'], Delete: ['Semicolon'] };
   function flashCaps(e) {
     const m = CAPS_KEY[e.key];
     if (!m) return;
@@ -279,21 +279,85 @@
     $('editPanel').hidden = !on;
     $('textbox').hidden = on;
     $('typingHelp').hidden = on;
+    if (!on) {
+      // No hint or replan left running outside Edit.
+      clearTimeout(editHintT);
+      clearTimeout(editReplanT);
+      editPlan = null;
+      setEditHint(false);
+    }
   }
-  // The edit save, with how many commands are unlocked.
+  // The edit save (rounds only; every command is always available).
   function editState() {
     const ed = (state.edit = state.edit && Array.isArray(state.edit.rounds) ? state.edit : { rounds: [] });
-    if (!Number.isInteger(ed.unlocked) || ed.unlocked < 1) ed.unlocked = EDIT.START_UNLOCKED;
+    delete ed.unlocked;
     return ed;
   }
-  const editStats = () => EDIT.cmdStats(editState().rounds, editState().unlocked);
+  const editStats = () => EDIT.cmdStats(editState().rounds);
+
+  // ---------- Edit: live plan and hint ----------
+  // After every key the planner works out the best next key(s) from the text and
+  // cursor; the hint shows them (Caps + the layer key on the drawn keyboard and a
+  // short line) after a pause, always, or never (Settings > Edit hint).
+  let editPlan = null; // EDIT.plan for the current text and cursor, or null (selection / no round)
+  let editHintOn = false;
+  let editHintT = null;
+  let editReplanT = null;
+  const editHintMode = () => (!state.settings.highlightNext ? 'off' : ['pause', 'always', 'off'].includes(state.settings.editHint) ? state.settings.editHint : 'pause');
+  // The plan for the text and cursor in the box right now (null while text is
+  // selected, or with no open round).
+  // Remembered per text and cursor, so a key usually finds its plan ready.
+  let editPlanKey = null;
+  let editPlanVal = null;
+  function editPlanNow() {
+    const E = editRound;
+    const inp = $('editInput');
+    if (!E || E.done || inp.selectionStart !== inp.selectionEnd) return null;
+    const key = inp.selectionStart + '\u0000' + inp.value + '\u0000' + E.r.target;
+    if (key !== editPlanKey) {
+      const p = EDIT.plan(inp.value, inp.selectionStart, E.r.target);
+      editPlanKey = key;
+      editPlanVal = p.done ? null : p;
+    }
+    return editPlanVal;
+  }
+  function editReplan() {
+    clearTimeout(editReplanT);
+    editPlan = editPlanNow();
+    // Every key hides the hint; it comes back at once or after a pause.
+    setEditHint(false);
+    clearTimeout(editHintT);
+    const mode = editHintMode();
+    if (!editPlan || mode === 'off') return;
+    if (mode === 'always') setEditHint(true);
+    else editHintT = setTimeout(() => setEditHint(true), 1000);
+  }
+  // Replan once the key has done its work (after the default action).
+  function editReplanSoon() {
+    clearTimeout(editReplanT);
+    editReplanT = setTimeout(editReplan, 0);
+  }
+  function setEditHint(on) {
+    on = !!(on && editPlan && editRound && !editRound.done && curMode() === 'edit' && view === 'practice');
+    editHintOn = on;
+    const el = $('editHint');
+    el.textContent = '';
+    if (on) {
+      const ids = EDIT.bestStr(editPlan).split('');
+      el.textContent = 'Next: ' + ids.map((id) => (id === 'T' ? 'type ' + showChar(editPlan.char) : EDIT.capsName(id))).join(' or ');
+    }
+    renderKeymapHighlight();
+  }
+
   function newEditRound() {
     clearTimeout(editNextT);
-    const ed = editState();
     const conf = ENGINE.allConfusions(state, 10).map((c) => ({ expected: c.expected, typed: c.typed }));
     // Most rounds are built around the weakest command (the focus in the bar above).
-    const r = EDIT.round(CONTENT.LINES, { focus: editStats().focus, unlocked: ed.unlocked, confusions: conf, words: ENGINE.drillWords(state) });
-    editRound = { r, start: null, keys: 0, arrows: 0, word: 0, wl: 0, wr: 0, hm: 0, en: 0, homeEnd: 0, del: 0, wordDel: 0, mouse: 0, done: false };
+    const r = EDIT.round(CONTENT.LINES, { focus: editStats().focus, confusions: conf, words: ENGINE.drillWords(state) });
+    editRound = {
+      r, start: null, keys: 0, arrows: 0, word: 0, wl: 0, wr: 0, hm: 0, en: 0, homeEnd: 0, del: 0, wordDel: 0, mouse: 0, done: false,
+      d: [], lastT: performance.now(), // decisions [best, took, ms since the previous key or the round start]
+    };
     // Target line with the spot to fix highlighted.
     const t = $('editTarget');
     t.textContent = '';
@@ -312,7 +376,7 @@
     if (view === 'practice' && !$('settings').open) editCaretEnd();
     renderEditStats();
     renderFocus();
-    renderKeymapHighlight();
+    editReplan();
   }
   function finishEditRound() {
     const E = editRound;
@@ -321,43 +385,34 @@
     const rec = {
       ts: Date.now(), kind: E.r.kind, ms, keys: E.keys, par: E.r.par,
       arrows: E.arrows, word: E.word, homeEnd: E.homeEnd, del: E.del, mouse: E.mouse,
-      cmds: E.r.cmds, wl: E.wl, wr: E.wr, hm: E.hm, en: E.en, wordDel: E.wordDel,
+      cmd: E.r.cmd, wl: E.wl, wr: E.wr, hm: E.hm, en: E.en, wordDel: E.wordDel, d: E.d,
     };
     const ed = editState();
     ed.rounds.push(rec);
     if (ed.rounds.length > EDIT.ROUNDS_KEPT) ed.rounds.splice(0, ed.rounds.length - EDIT.ROUNDS_KEPT);
-    // Every unlocked command used most of the time: the next one unlocks.
-    let unlocked = null;
-    if (editStats().canUnlock) unlocked = EDIT.CMDS[ed.unlocked++];
     // Saved in this browser every round; the server, folder and gist copies every
-    // 5 rounds, on an unlock, and when leaving Edit or the page.
+    // 5 rounds and when leaving Edit or the page.
     editUnsynced++;
-    if (unlocked || editUnsynced >= 5) flushEdit();
+    if (editUnsynced >= 5) flushEdit();
     else STORE.save(state);
     SOUND.complete();
     const inp = $('editInput');
     inp.classList.add('solved');
     inp.readOnly = true;
-    const tip = EDIT.tip(E.r, { ...E });
+    editReplan(); // no plan once solved: hides the hint
+    const tip = E.mouse ? 'No mouse: Caps+J / L and the jumps move the cursor' : EDIT.firstMiss(E.d);
     const fb = $('editFeedback');
-    fb.textContent = (ms / 1000).toFixed(1) + ' s · ' + E.keys + (E.keys === 1 ? ' key' : ' keys') + ' (best about ' + E.r.par + ')';
+    fb.textContent = (ms / 1000).toFixed(1) + ' s · ' + E.keys + (E.keys === 1 ? ' key' : ' keys') + ' (best ' + E.r.par + ')';
     if (tip) {
       const s = document.createElement('span');
       s.className = 'tip';
       s.textContent = ' · ' + tip;
       fb.append(s);
     }
-    if (unlocked) {
-      const s = document.createElement('span');
-      s.className = 'unlock';
-      s.textContent = ' · New command: ' + unlocked.caps + ' (' + unlocked.key + ') · ' + unlocked.what;
-      fb.append(s);
-      SOUND.unlock();
-    }
     renderMetrics();
     renderStrip();
     renderFocus();
-    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, unlocked ? 3000 : tip ? 1800 : 700);
+    editNextT = setTimeout(() => { if (curMode() === 'edit' && view === 'practice') newEditRound(); }, tip ? 1800 : 700);
   }
   function renderEditStats() {
     const R = (state.edit && state.edit.rounds) || [];
@@ -370,7 +425,7 @@
       '<div><b>' + s.n + '</b>rounds (last 50)</div>' +
       '<div><b>' + (s.medMs == null ? '–' : (s.medMs / 1000).toFixed(1) + 's') + '</b>median fix time</div>' +
       '<div><b>' + (s.medRatio == null ? '–' : s.medRatio.toFixed(1) + '×') + '</b>keys vs best</div>' +
-      '<div><b>' + pctS(s.wordShare) + '</b>used word jumps</div>' +
+      '<div><b>' + pctS(s.bestRate) + '</b>best-key rate</div>' +
       '<div><b>' + pctS(s.mouseShare) + '</b>used the mouse</div>' +
       (slow ? '<div><b>' + escHtml(EDIT.KIND_NAMES[slow[0]]) + '</b>slowest kind</div>' : '');
   }
@@ -389,6 +444,19 @@
     }
     E.keys++;
     flashCaps(e);
+    // The key as a decision against the plan for the text and cursor it found
+    // (no plan while text is selected). Planned here, not taken from the cached
+    // plan, so fast repeats are never scored against the state before the last key.
+    const p = editPlanNow();
+    const took = EDIT.classify(e, p);
+    if (took) {
+      const now = performance.now();
+      // A held key repeats on its own: counted as keys, not as decisions.
+      if (p && !e.repeat && E.d.length < EDIT.DEC_PER_ROUND) E.d.push([EDIT.bestStr(p), took, Math.round(now - E.lastT)]);
+      E.lastT = now;
+    }
+    if (editHintOn) setEditHint(false); // the hint goes with every key
+    editReplanSoon();
     const k = e.key;
     if (k === 'ArrowLeft' || k === 'ArrowRight') {
       if (e.ctrlKey || e.metaKey) {
@@ -426,6 +494,11 @@
   $('editInput').addEventListener('input', () => {
     const E = editRound;
     if (E && !E.done && $('editInput').value === E.r.target) finishEditRound();
+    else editReplanSoon();
+  });
+  // Mouse clicks and selections move the cursor too: plan again.
+  document.addEventListener('selectionchange', () => {
+    if (document.activeElement === $('editInput') && editRound && !editRound.done) editReplanSoon();
   });
 
   function skipAuto() {
@@ -771,28 +844,24 @@
     strip.innerHTML = '';
     strip.classList.toggle('jumps', curMode() === 'edit');
     if (curMode() === 'edit') {
-      // Edit: the Caps Lock commands instead of symbols, unlocking in order like
-      // the symbols; the bar is how often you used each one in its last 10 rounds
-      // where it was the fastest way.
+      // Edit: the Caps Lock commands instead of symbols, all available; the bar
+      // is the accuracy over each one's last 30 decisions where it was a best key.
       const cs = editStats();
-      EDIT.CMDS.forEach((c, i) => {
+      EDIT.CHIPS.forEach((c) => {
         const st = cs.by[c.id];
-        const locked = i >= cs.unlocked;
         const d = document.createElement('div');
-        d.className = 'sym cmd' + (locked ? ' locked' : '') + (!locked && c.id === cs.focus ? ' focus' : '') +
-          (!locked && st.n >= EDIT.UNLOCK.rounds && st.share >= EDIT.UNLOCK.share ? ' learned' : '');
+        d.className = 'sym cmd' + (c.id === cs.focus ? ' focus' : '') + (st.n >= EDIT.DEC_MIN && st.acc >= 0.9 ? ' learned' : '');
         d.innerHTML = '<span class="k"></span><span class="c"></span>';
         d.querySelector('.k').textContent = c.caps;
         d.querySelector('.c').textContent = c.key;
-        if (!locked) {
-          const bar = document.createElement('div');
-          bar.className = 'bar';
-          bar.innerHTML = '<i style="width:' + Math.round(st.share * 100) + '%;background:' + confColor(st.share) + '"></i>';
-          d.appendChild(bar);
-        }
-        d.title = locked
-          ? c.caps + ' (' + c.key + ') · ' + c.what + ' (locked)'
-          : c.caps + ' (' + c.key + ') · ' + c.what + '\nused in ' + st.used + ' of the last ' + st.n + ' rounds where it was fastest';
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        bar.innerHTML = '<i style="width:' + Math.round(st.acc * 100) + '%;background:' + confColor(st.acc) + '"></i>';
+        d.appendChild(bar);
+        d.title = c.caps + ' (' + c.key + ') · ' + c.what + '\n' + (st.n
+          ? 'accuracy ' + pct(st.acc) + ' (' + st.hits + ' of the last ' + st.n + ' times it was a best key), median reaction ' +
+            (st.medMs == null ? '–' : Math.round(st.medMs) + ' ms')
+          : 'no decisions yet');
         strip.appendChild(d);
       });
       return;
@@ -825,10 +894,7 @@
     if (curMode() === 'edit') {
       const c = EDIT.BY_ID[editStats().focus];
       html = 'Focus <b>' + c.caps + '</b> (' + c.key + ') · ' + c.what;
-      if (editRound && !editRound.done) {
-        html += ' · this round: <b>' + editRound.r.cmds.map((id) => EDIT.BY_ID[id].caps).join(' then ') + '</b>, cursor at the ' +
-          (editRound.r.caret === 0 ? 'start' : 'end');
-      }
+      if (editRound) html += ' · cursor at the ' + (editRound.r.caret === 0 ? 'start' : 'end');
     } else if (isWords() && lesson && lesson.sentences) {
       html = 'Sentences · all letters unlocked · capitals and punctuation are not counted';
     } else if (curMode() === 'adaptive' || isWords()) {
@@ -900,11 +966,22 @@
     document.querySelectorAll('.key.next, .key.nextshift').forEach((k) => k.classList.remove('next', 'nextshift'));
     document.querySelectorAll('.legend span.on').forEach((s) => s.classList.remove('on'));
     if (curMode() === 'edit') {
-      // The round's first command: its layer key, with Caps Lock held.
-      if (!state.settings.highlightNext || !editRound || editRound.done || !editRound.r.cmds.length) return;
-      const c = EDIT.BY_ID[editRound.r.cmds[0]];
-      if ($('k-' + c.code)) $('k-' + c.code).classList.add('next');
-      if ($('k-CapsLock')) $('k-CapsLock').classList.add('nextshift');
+      // The hint: each best next key's layer key with Caps Lock held, or for
+      // typing the character's key with Shift when it needs one (like Adaptive).
+      if (!editHintOn || !editPlan) return;
+      const lit = (code, cls) => { if ($('k-' + code)) $('k-' + code).classList.add(cls); };
+      for (const id of EDIT.bestStr(editPlan)) {
+        if (id === 'T') {
+          const m = LAYOUT.charMap[editPlan.char];
+          if (!m) continue;
+          lit(m.code, 'next');
+          const sh = LAYOUT.requiredShift(editPlan.char);
+          if (sh) lit(sh, 'nextshift');
+        } else {
+          lit(EDIT.BY_ID[id].code, 'next');
+          lit('CapsLock', 'nextshift');
+        }
+      }
       return;
     }
     if (!state.settings.highlightNext || !lesson || lesson.done) return;
@@ -936,18 +1013,16 @@
     const editMs = ((state.edit && state.edit.rounds) || []).filter(isToday).reduce((a, r) => a + Math.min(r.ms || 0, 60000), 0);
     const mins = ENGINE.lessonMin(state.lessons.filter(isToday)) + ENGINE.lessonMin(words.lessons.filter(isToday)) + editMs / 60000;
     $('mToday').textContent = mins < 1 ? Math.round(mins * 60) + 's' : Math.round(mins) + 'm';
-    // Edit: the same row shows the word-jump drill (last 20 rounds).
+    // Edit: the same row shows the Edit drill (last 20 rounds).
     const edit = curMode() === 'edit';
     $('mWpmL').textContent = edit ? 'Fix time' : 'WPM';
     $('mAccL').textContent = edit ? 'Keys vs best' : 'Accuracy';
-    const fc = edit ? EDIT.BY_ID[editStats().focus] : null;
-    $('mShiftL').textContent = edit ? fc.caps + ' used' : 'Same-hand Shift';
+    $('mShiftL').textContent = edit ? 'Best-key rate' : 'Same-hand Shift';
     if (edit) {
       const s = EDIT.summary(editState().rounds, 20);
-      const st = editStats().by[fc.id];
       $('mWpm').textContent = s.medMs == null ? '–' : (s.medMs / 1000).toFixed(1) + 's';
       $('mAcc').textContent = s.medRatio == null ? '–' : s.medRatio.toFixed(1) + '×';
-      $('mShift').textContent = st.n ? Math.round(st.share * 100) + '%' : '–';
+      $('mShift').textContent = pct(s.bestRate);
       ['mWpmD', 'mAccD'].forEach((id) => { $(id).textContent = ''; $(id).className = 'delta'; });
       return;
     }
@@ -1444,6 +1519,7 @@
     $('sVol').value = s.volume;
     $('sKeymap').checked = s.showKeymap;
     $('sNext').checked = s.highlightNext;
+    $('sEditHint').value = ['pause', 'always', 'off'].includes(s.editHint) ? s.editHint : 'pause';
     $('sFingers').checked = s.fingerColors;
   }
   $('settingsBtn').addEventListener('click', () => {
@@ -1466,6 +1542,7 @@
     s.volume = parseFloat($('sVol').value);
     s.showKeymap = $('sKeymap').checked;
     s.highlightNext = $('sNext').checked;
+    s.editHint = ['pause', 'always', 'off'].includes($('sEditHint').value) ? $('sEditHint').value : 'pause';
     s.fingerColors = $('sFingers').checked;
     s.focusStyle = $('sFocus').value === 'mixed' ? 'mixed' : 'single';
     const wp = words.prefs;
@@ -1481,6 +1558,7 @@
     // (and opening/closing the dialog) never touch it.
     if (JSON.stringify(s) !== before) persist();
     applySettings();
+    if (curMode() === 'edit') editReplan();
     renderStrip();
     // New Words text options apply at once if no Words lesson is under way.
     if (wordsOn && textBefore !== JSON.stringify([wp.lessonLen, wp.caps, wp.nums, wp.punct]) && lesson && lesson.start === null) {

@@ -17,6 +17,7 @@
         volume: 0.6,
         showKeymap: true,
         highlightNext: true,
+        editHint: 'pause', // Edit: show the best next key 'pause' (after 1 s without a key) | 'always' | 'off'
         fingerColors: true,
         focusStyle: 'single', // 'single' (keybr-style learn phase) | 'mixed'
       },
@@ -31,7 +32,7 @@
       lessons: [],
       mycode: { text: '', pos: 0 },
       tokens: {}, // word in code -> [[ms (0 miss, -1 untimed), ts]]
-      edit: { rounds: [], unlocked: 2 }, // Edit drill: rounds [{ts, kind, ms, keys, par, cmds, arrows, word, wl, wr, hm, en, homeEnd, del, wordDel, mouse}], commands unlocked
+      edit: { rounds: [] }, // Edit drill: rounds [{ts, kind, ms, keys, par, cmd, arrows, word, wl, wr, hm, en, homeEnd, del, wordDel, mouse, d: [[best ids, key pressed, ms]]}]
     };
   }
 
